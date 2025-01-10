@@ -17,3 +17,9 @@ plugins = ['pydantic.mypy']
 
 [tool.pydantic-mypy]
 strict = true
+
+[dependency-groups]
+dev = [
+    "pytest-asyncio>=0.25.2",
+    "uvicorn>=0.34.0",
+]
