@@ -116,6 +116,18 @@ wheels = [
 ]
 
 [[package]]
+name = "pycasbin"
+version = "1.36.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "simpleeval" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3c/bc/058205187fd098f2008869777af2aa8e1e9966223e8ecc6354abfa62532a/pycasbin-1.36.3.tar.gz", hash = "sha256:11379f08e6f55c746e094a800b17d60add86d9d0ce14d39108ad23b162c63457", size = 3669177 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5f/9b/efe9083c976ddb2b83d87d33b3e0d9e23340fa2d1aed4611eadabc29f655/pycasbin-1.36.3-py3-none-any.whl", hash = "sha256:23b4d83a025c184bd58f30e21fd6855a28a97eaaecaa58ea0bf30a7f4a84f0e0", size = 4380740 },
+]
+
+[[package]]
 name = "pydantic"
 version = "2.10.4"
 source = { registry = "https://pypi.org/simple" }
@@ -161,6 +173,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "casbin" },
     { name = "fastapi" },
+    { name = "pycasbin" },
     { name = "pydantic" },
     { name = "pytest" },
     { name = "sqlmodel" },
@@ -176,6 +189,7 @@ dev = [
 requires-dist = [
     { name = "casbin", specifier = ">=1.37.0" },
     { name = "fastapi", specifier = ">=0.115.6" },
+    { name = "pycasbin", specifier = ">=1.36.3" },
     { name = "pydantic", specifier = ">=2.10.4" },
     { name = "pytest", specifier = ">=8.3.4" },
     { name = "sqlmodel", specifier = ">=0.0.22" },
