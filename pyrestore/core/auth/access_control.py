@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from casbin import Enforcer
 from casbin.model import Model
@@ -150,7 +150,7 @@ class AccessControl:
         action: str,
         role: Optional[str],
         owner_field: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
+        context: Optional[Union[List[str], Dict[str, Any]]] = None,
     ) -> None:
         """
         Adds a policy rule to the enforcer
