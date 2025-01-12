@@ -4,8 +4,8 @@ from datetime import datetime
 
 import pytest
 
-from pyrestore.core.notification import NotificationEngine
-from pyrestore.models import NotificationKey, NotificationLog
+from cape.core.notification import NotificationEngine
+from cape.models import NotificationKey, NotificationLog
 
 
 @dataclass

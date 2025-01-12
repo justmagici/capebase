@@ -4,7 +4,7 @@ from asyncio import Queue
 from collections import defaultdict
 from typing import Callable, Optional, Union
 
-from pyrestore.models import NotificationKey, NotificationLog
+from cape.models import NotificationKey, NotificationLog
 
 logger = logging.getLogger(__name__)
 

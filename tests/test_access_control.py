@@ -1,6 +1,6 @@
 import pytest
 
-from pyrestore.core.auth.access_control import AccessControl
+from cape.core.auth.access_control import AccessControl
 
 
 @pytest.fixture
