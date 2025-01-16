@@ -5,8 +5,10 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "aiosqlite>=0.20.0",
     "casbin>=1.37.0",
     "fastapi>=0.115.6",
+    "greenlet>=3.1.1",
     "pycasbin>=1.36.3",
     "pydantic>=2.10.4",
     "pytest>=8.3.4",
@@ -21,6 +23,7 @@ strict = true
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "pytest-asyncio>=0.25.2",
     "uvicorn>=0.34.0",
 ]
