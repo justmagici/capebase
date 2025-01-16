@@ -10,11 +10,26 @@ from cape.api import APIGenerator
 from cape.database import AsyncDatabaseManager
 
 
-# Test model
-class TestItem(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
+# Base model for shared attributes
+class TestItemBase(SQLModel):
     name: str
     description: Optional[str] = Field(default=None)
+
+# Schema for creating items (without ID)
+class TestItemCreate(TestItemBase):
+    category: str = Field(default="default")  # Additional field for creation
+
+# Schema for updating items (all fields optional)
+class TestItemUpdate(SQLModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None  # New field only available in updates
+
+# Database model (the actual table)
+class TestItem(TestItemBase, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    category: str = Field(default="default")
+    status: Optional[str] = Field(default=None)
 
 
 @pytest_asyncio.fixture
@@ -51,17 +66,21 @@ async def api_generator(app, db):
 
 @pytest.mark.asyncio
 async def test_create_item(client, api_generator):
-    payload = TestItem(name="Test Item", description="Test Description")
-
-    response = client.post("/testitem", json=payload.model_dump())
-
-    assert response.status_code == 200
-
-    result = TestItem.model_validate(response.json())
-    assert result == TestItem(
-        id=result.id,  # Keep the generated ID
-        **payload.model_dump(exclude={"id"})  # Compare against original payload
+    create_data = TestItemCreate(
+        name="Test Item",
+        description="Test Description",
+        category="test-category"
     )
+    
+    response = client.post("/testitem", json=create_data.model_dump())
+    assert response.status_code == 200
+    
+    result = TestItem.model_validate(response.json())
+    assert result.name == create_data.name
+    assert result.description == create_data.description
+    assert result.category == create_data.category
+    assert result.status is None  # Default value
+    assert isinstance(result.id, int)
 
 
 @pytest.mark.asyncio
@@ -112,22 +131,32 @@ async def test_list_items(client, api_generator):
 
 @pytest.mark.asyncio
 async def test_update_item(client, api_generator):
-    # Create an item first
-    payload = TestItem(name="Original Name", description="Original Description")
-    create_response = client.post("/testitem", json=payload.model_dump())
-    item = TestItem.model_validate(create_response.json())
+    # First create an item
+    create_data = TestItemCreate(
+        name="Original Name",
+        description="Original Description",
+        category="original-category"
+    )
+    create_response = client.post("/testitem", json=create_data.model_dump())
+    item_id = TestItem.model_validate(create_response.json()).id
 
-    # Update the item
-    item.name = "Updated Name"
-    item.description = "Updated Description"
-    response = client.put(f"/testitem/{item.id}", json=item.model_dump(exclude_unset=True))
+    # Update with partial data
+    update_data = TestItemUpdate(
+        name="Updated Name",
+        status="active"  # Only updating name and status
+    )
+    response = client.put(
+        f"/testitem/{item_id}", 
+        json=update_data.model_dump(exclude_unset=True)
+    )
     assert response.status_code == 200
 
     result = TestItem.model_validate(response.json())
-    assert result == TestItem(
-        id=result.id,  # Keep the generated ID
-        **item.model_dump(exclude={"id"})  # Compare against updated payload
-    )
+    assert result.id == item_id
+    assert result.name == update_data.name
+    assert result.description == create_data.description  # Should remain unchanged
+    assert result.category == create_data.category  # Should remain unchanged
+    assert result.status == update_data.status
 
 
 @pytest.mark.asyncio
@@ -161,16 +190,26 @@ async def test_delete_nonexistent_item(client, api_generator):
 
 @pytest.mark.asyncio
 async def test_partial_update(client, api_generator):
-    # Create an item first
-    payload = TestItem(name="Original Name", description="Original Description")
-    create_response = client.post("/testitem", json=payload.model_dump())
+    # Create initial item
+    create_data = TestItemCreate(
+        name="Original Name",
+        description="Original Description",
+        category="test-category"
+    )
+    create_response = client.post("/testitem", json=create_data.model_dump())
     item_id = TestItem.model_validate(create_response.json()).id
 
-    # Update only the name
-    updated_payload = TestItem(name="Updated Name")
-    response = client.put(f"/testitem/{item_id}", json=updated_payload.model_dump(exclude_unset=True))
+    # Update only the status
+    update_data = TestItemUpdate(status="inactive")
+    response = client.put(
+        f"/testitem/{item_id}", 
+        json=update_data.model_dump(exclude_unset=True)
+    )
     assert response.status_code == 200
     
     result = TestItem.model_validate(response.json())
-    assert result.name == "Updated Name"
-    assert result.description == "Original Description"  # Should remain unchanged
+    assert result.id == item_id
+    assert result.name == create_data.name  # Should remain unchanged
+    assert result.description == create_data.description  # Should remain unchanged
+    assert result.category == create_data.category  # Should remain unchanged
+    assert result.status == update_data.status  # Should be updated
