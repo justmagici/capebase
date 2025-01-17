@@ -1,125 +1,98 @@
 import asyncio
 import logging
 from asyncio import Queue
-from collections import defaultdict
-from typing import Callable, Optional, Union
+from dataclasses import dataclass, field
+from typing import (
+    AsyncIterator,
+    Callable,
+    Coroutine,
+    Dict,
+    Generic,
+    Type,
+    Union,
+    overload,
+)
+from weakref import WeakSet
 
-from cape.models import NotificationKey, NotificationLog
+from sqlmodel import SQLModel
+
+from cape.models import ModelChange, NotificationLog
+from cape.types import ModelType
 
 logger = logging.getLogger(__name__)
 
 F = Callable[[NotificationLog], None]
 
 
-class NotificationEngine:
-    queue: Queue[NotificationLog]
-    subscribers: dict[NotificationKey, list[F]]
-    polling_task: asyncio.Task | None = None
+# API Generator will just setup a subscriber to notifcation engine for each model
+# and then we can just use the notification engine to send notifications to the API
 
-    def __init__(self, queue: Queue[NotificationLog] | None = None):
-        self.subscribers = defaultdict(list)
-        self.queue = queue or Queue()
 
-    def subscribe(
-        self, key: NotificationKey, callback: Optional[F] = None
-    ) -> Union[F, Callable[[F], F]]:
-        """Subscribe a callback function to notifications matching the given key.
+# In-memory broadcast channel that can be used to send notification to multiple listeners
+@dataclass
+class BroadcastChannel(Generic[ModelType]):
+    _listeners: WeakSet[
+        Callable[
+            [ModelChange[ModelType]], Coroutine[ModelChange[ModelType], None, None]
+        ]
+    ] = field(default_factory=WeakSet)
+    maxsize: int = field(default=10)
 
-        Args:
-            key: NotificationKey to subscribe to, containing table name and event type
-            callback: Optional callback function to execute when notification received.
-                     If None, returns a decorator.
+    async def subscribe(self) -> AsyncIterator[ModelChange[ModelType]]:
+        queue: Queue[ModelChange[ModelType]] = Queue(maxsize=self.maxsize)
 
-        Returns:
-            Either the callback function directly, or a decorator that will register
-            the decorated function as the callback.
-        """
+        async def listener(change: ModelChange[ModelType]) -> None:
+            try:
+                await queue.put(change)
+            except asyncio.QueueFull:
+                logger.error("Broadcast channel queue is full")
+                # TOOD: Consider implementing backpressure here
 
-        def wrapper(
-            callback: Callable[[NotificationLog], None],
-        ) -> Callable[[NotificationLog], None]:
-            """Wrapper function to use as a decorator.
-
-            Args:
-                callback: The function to register as the notification callback
-
-            Returns:
-                The original callback function after registering it
-            """
-            self.subscribers[key].append(callback)
-            return callback
-
-        if callback is None:
-            return wrapper
-        else:
-            self.subscribers[key].append(callback)
-            return callback
-
-    def unsubscribe(self, key: NotificationKey, callback: F):
-        "Unsubscribe from notifications for a specific key"
-        if key in self.subscribers:
-            self.subscribers[key].remove(callback)
-            if not self.subscribers[key]:
-                del self.subscribers[key]
-
-    async def notify(self, notification: NotificationLog):
-        await self.queue.put(notification)
-
-    async def _poll(self):
-        """Single polling task for all notifications"""
+        self._listeners.add(listener)
         try:
             while True:
-                try:
-                    notification = await self.queue.get()
-                    callbacks = self.subscribers.get(notification.key, [])
-                    for callback in callbacks:
-                        try:
-                            await self._execute_callback(callback, notification)
-                        except Exception as e:
-                            logger.error(
-                                f"Error in executing callback for key {notification.key}: {e}"
-                            )
+                yield await queue.get()
+        except asyncio.CancelledError:
+            logger.info("Broadcast channel listener cancelled")
+            self._listeners.remove(listener)
+        finally:
+            self._listeners.discard(listener)
 
-                    self.queue.task_done()
-                except asyncio.CancelledError:
-                    logger.info("Notification engine poll cancelled")
-                    break
-                except Exception as e:
-                    logger.error(f"Error polling queue: {e}")
-                    await asyncio.sleep(1)  # Prevent tight loop on error
-        except Exception:
-            logging.error("Fatal error in notification engine poll", exc_info=True)
+    async def publish(self, change: ModelChange[ModelType]):
+        tasks = [asyncio.create_task(listener(change)) for listener in self._listeners]
+        print(f"Publishing change to {len(tasks)} listeners")
+        await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def _execute_callback(self, callback: F, notification: NotificationLog):
-        """Execute a callback, handling both async and sync callbacks"""
-        try:
-            if asyncio.iscoroutinefunction(callback):
-                await callback(notification)
-            else:
-                callback(notification)
-        except Exception as e:
-            logger.error(f"Error in executing callback for key {e}")
 
-    async def start(self):
-        """Start the notification engine polling task"""
-        if not self.polling_task:
-            self.polling_task = asyncio.create_task(self._poll())
+@dataclass
+class NotificationEngine:
+    _channels: Dict[str, BroadcastChannel[SQLModel]] = field(default_factory=dict)
 
-    async def stop(self):
-        """Stop the notification engine polling task"""
-        if self.polling_task:
-            self.polling_task.cancel()
-            try:
-                await self.polling_task
-            except asyncio.CancelledError:
-                pass
-            self.polling_task = None
-            logger.info("Notification engine stopped")
+    @overload
+    def get_channel(
+        self, model_type: Type[SQLModel]
+    ) -> BroadcastChannel[SQLModel]: ...
 
-        await self._cleanup()
+    @overload
+    def get_channel(self, model_type: str) -> BroadcastChannel[SQLModel]: ...
 
-    async def _cleanup(self):
-        """Clean up the queue when the engine is stopped"""
-        while not self.queue.empty():
-            await self.queue.get()
-            self.queue.task_done()
+    def get_channel(
+        self, model_type: Union[Type[SQLModel], SQLModel, str]
+    ) -> BroadcastChannel[SQLModel]:
+        """Get or create a broadcast channel for a model type"""
+        if isinstance(model_type, type) and issubclass(model_type, SQLModel):
+            key = model_type.__tablename__
+        elif isinstance(model_type, SQLModel):
+            key = model_type.__tablename__
+        elif isinstance(model_type, str):
+            key = model_type
+
+        assert isinstance(key, str)
+        if key not in self._channels:
+            self._channels[key] = BroadcastChannel()
+        return self._channels[key]
+
+    async def notify(self, change: ModelChange[SQLModel]):
+        """Notify all subscribers of a model change"""
+        if change.table in self._channels:
+            await self._channels[change.table].publish(change)
