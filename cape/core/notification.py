@@ -86,6 +86,8 @@ class NotificationEngine:
             key = model_type.__tablename__
         elif isinstance(model_type, str):
             key = model_type
+        else:
+            raise ValueError(f"Invalid model type: {model_type}")
 
         assert isinstance(key, str)
         if key not in self._channels:

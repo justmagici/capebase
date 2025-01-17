@@ -29,7 +29,7 @@ def notification_engine():
 
 @pytest.fixture
 def current_time():
-    return datetime.utcnow()
+    return datetime.now()
 
 
 @pytest.mark.asyncio
