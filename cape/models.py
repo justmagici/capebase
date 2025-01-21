@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Generic, Literal
+from typing import Generic, Literal, Dict, Any
 
 from sqlmodel import SQLModel
 
@@ -32,3 +32,11 @@ class ModelChange(Generic[ModelType]):
     event: TableEvent
     payload: ModelType
     timestamp: datetime
+
+    def to_json(self) -> Dict[str, Any]:
+        return {
+            "table": self.table,
+            "event": self.event,
+            "payload": self.payload.model_dump(),
+            "timestamp": self.timestamp.isoformat(),
+        }

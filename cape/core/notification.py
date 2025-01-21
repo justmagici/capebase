@@ -18,7 +18,7 @@ from sqlmodel import SQLModel
 
 from cape.models import ModelChange, NotificationLog
 from cape.types import ModelType
-
+ 
 logger = logging.getLogger(__name__)
 
 F = Callable[[NotificationLog], None]
@@ -60,7 +60,6 @@ class BroadcastChannel(Generic[ModelType]):
 
     async def publish(self, change: ModelChange[ModelType]):
         tasks = [asyncio.create_task(listener(change)) for listener in self._listeners]
-        print(f"Publishing change to {len(tasks)} listeners")
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
@@ -72,6 +71,7 @@ class NotificationEngine:
     def get_channel(
         self, model_type: Type[SQLModel]
     ) -> BroadcastChannel[SQLModel]: ...
+    
 
     @overload
     def get_channel(self, model_type: str) -> BroadcastChannel[SQLModel]: ...
@@ -98,3 +98,5 @@ class NotificationEngine:
         """Notify all subscribers of a model change"""
         if change.table in self._channels:
             await self._channels[change.table].publish(change)
+
+        
