@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Generic, Literal, Dict, Any
+from typing import Generic, Literal, Dict, Any, Union, Callable
 
 from sqlmodel import SQLModel
 
@@ -28,7 +28,7 @@ class NotificationLog:
 
 @dataclass(frozen=True)
 class ModelChange(Generic[ModelType]):
-    table: str
+    table: Union[str, Callable[..., str]]
     event: TableEvent
     payload: ModelType
     timestamp: datetime

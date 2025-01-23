@@ -220,8 +220,6 @@ class APIGenerator(Generic[T], APIRouter):
 
         return route
 
-    import logging
-
     # Using EventSourceResponse instead of StreamingResponse to gracefully handle exit signals from server
     def _subscribe(self) -> Callable[..., Coroutine[Any, Any, EventSourceResponse]]:
         async def route(
