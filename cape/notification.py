@@ -65,7 +65,7 @@ class BroadcastChannel(Generic[ModelType]):
 
 @dataclass
 class NotificationEngine:
-    _channels: Dict[str, BroadcastChannel[SQLModel]] = field(default_factory=dict)
+    _channels: Dict[Union[str, Callable[..., str]], BroadcastChannel[SQLModel]] = field(default_factory=dict)
 
     @overload
     def get_channel(

@@ -10,9 +10,9 @@ from fastapi.testclient import TestClient
 from sqlmodel import Field, SQLModel
 
 from cape.api import APIGenerator
-from cape.core.auth.access_control import AccessControl
-from cape.core.auth.row_level_security import RowLevelSecurity
-from cape.core.notification import NotificationEngine
+from cape.auth.access_control import AccessControl
+from cape.auth.row_level_security import RowLevelSecurity
+from cape.notification import NotificationEngine
 from cape.database import AsyncDatabaseManager
 from cape.models import ModelChange
 

@@ -7,7 +7,7 @@ from sqlalchemy import Delete, Insert, Select, Update, and_, or_
 from sqlalchemy.orm import Query
 from sqlmodel import SQLModel
 
-from cape.core.auth.access_control import AccessControl
+from cape.auth.access_control import AccessControl
 
 WILDCARD = "*"
 

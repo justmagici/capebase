@@ -19,11 +19,10 @@ from typing import (
 from fastapi import APIRouter, Depends, HTTPException, params
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel, select
-# from starlette.responses import StreamingResponse
 from sse_starlette import EventSourceResponse
 
-from cape.core.auth.row_level_security import RowLevelSecurity
-from cape.core.notification import NotificationEngine
+from cape.auth.row_level_security import RowLevelSecurity
+from cape.notification import NotificationEngine
 
 logger = logging.getLogger(__name__)
 

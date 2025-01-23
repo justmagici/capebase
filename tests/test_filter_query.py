@@ -3,8 +3,8 @@ from typing import Optional
 import pytest
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
-from cape.core.auth.access_control import AccessControl
-from cape.core.auth.row_level_security import RLSConfig, RowLevelSecurity
+from cape.auth.access_control import AccessControl
+from cape.auth.row_level_security import RLSConfig, RowLevelSecurity
 
 
 # Test Models
