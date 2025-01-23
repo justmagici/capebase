@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional, Union
 
-from casbin import Enforcer
+from casbin.enforcer import Enforcer
 from casbin.model import Model
 
 """
