@@ -4,6 +4,7 @@ import pytest
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
 from cape.auth.access_control import AccessControl
+from cape.models import AuthContext
 from cape.auth.row_level_security import RLSConfig, RowLevelSecurity
 
 
@@ -86,7 +87,7 @@ def test_filter_query_owner_access(session, rls, sample_data):
     """Test that users can access their own documents"""
     query = select(SecureDocument)
     filtered_query = rls.filter_query(
-        query=query, subject="bob", action="read", context={}
+        query=query, action="read", auth_context=AuthContext(subject="bob", context={})
     )
 
     results = session.exec(filtered_query).all()
@@ -98,7 +99,7 @@ def test_filter_query_org_access(session, rls, sample_data):
     """Test that users can access documents in their org"""
     query = select(SecureDocument)
     filtered_query = rls.filter_query(
-        query=query, subject="alice", action="read", context={"org_id": "org1"}
+        query=query, action="read", auth_context=AuthContext(subject="alice", context={"org_id": "org1"})
     )
 
     results = session.exec(filtered_query).all()
@@ -111,9 +112,8 @@ def test_filter_query_no_access(session, rls, sample_data):
     query = select(SecureDocument)
     filtered_query = rls.filter_query(
         query=query,
-        subject="dave",  # User with no ownership or org access
         action="read",
-        context={"org_id": "org3"},  # Non-existent org
+        auth_context=AuthContext(subject="dave", context={"org_id": "org3"})
     )
 
     results = session.exec(filtered_query).all()
@@ -124,7 +124,9 @@ def test_filter_query_combined_access(session, rls, sample_data):
     """Test combined access through ownership and org membership"""
     query = select(SecureDocument)
     filtered_query = rls.filter_query(
-        query=query, subject="bob", action="read", context={"org_id": "org2"}
+        query=query,
+        action="read",
+        auth_context=AuthContext(subject="bob", context={"org_id": "org2"})
     )
 
     results = session.exec(filtered_query).all()
@@ -140,7 +142,9 @@ def test_filter_query_update(session, rls, sample_data):
     query = update(SecureDocument).values(content="Updated")
 
     filtered_query = rls.filter_query(
-        query=query, subject="bob", action="write", context={"org_id": "org1"}
+        query=query,
+        action="write",
+        auth_context=AuthContext(subject="bob", context={"org_id": "org1"})
     )
 
     session.execute(filtered_query)
@@ -169,7 +173,9 @@ def test_filter_query_delete(session, rls, sample_data):
     )
 
     filtered_query = rls.filter_query(
-        query=query, subject="bob", action="delete", context={"org_id": "org1"}
+        query=query,
+        action="delete",
+        auth_context=AuthContext(subject="bob", context={"org_id": "org1"})
     )
 
     session.execute(filtered_query)
@@ -179,3 +185,49 @@ def test_filter_query_delete(session, rls, sample_data):
     results = session.exec(select(SecureDocument)).all()
     assert len(results) == 3  # Should have deleted org1 doc where bob is owner
     assert not any(doc.owner_id == "bob" and doc.org_id == "org1" for doc in results)
+
+
+def test_filter_query_complex_update(session, rls, sample_data):
+    """Test complex update query with multiple conditions"""
+    from sqlalchemy import update, and_
+    
+    # Create update statement with multiple conditions
+    stmt = (
+        update(SecureDocument)
+        .where(
+            and_(
+                SecureDocument.owner_id == "alice",
+                SecureDocument.org_id == "org1",
+                SecureDocument.title.like("Doc%")
+            )
+        )
+        .values(content="Complex update")
+    )
+
+    # Apply RLS filtering
+    filtered_query = rls.filter_query(
+        query=stmt,
+        action="write",
+        auth_context=AuthContext(subject="alice", context={"org_id": "org1"})
+    )
+
+    # Execute the filtered update
+    session.execute(filtered_query)
+    session.commit()
+    
+    # Verify results
+    results = session.exec(select(SecureDocument)).all()
+    
+    # Check that only matching documents were updated
+    updated_docs = [doc for doc in results if doc.content == "Complex update"]
+    assert len(updated_docs) == 1  # Should only update Doc 1
+    assert all(doc.owner_id == "alice" for doc in updated_docs)
+    assert all(doc.org_id == "org1" for doc in updated_docs)
+    
+    # Check that other documents were not affected
+    unchanged_docs = [doc for doc in results if doc.content != "Complex update"]
+    assert len(unchanged_docs) == 3
+    assert not any(
+        doc.owner_id == "alice" and doc.org_id == "org1" 
+        for doc in unchanged_docs
+    )

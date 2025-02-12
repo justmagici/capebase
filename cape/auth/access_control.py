@@ -107,7 +107,7 @@ def build_policy_context_expression(
 
     # Special treatment for owner field to simplify the policy
     if owner_field:
-        conditions.append(f"r.sub == r.res_ctx['{owner_field}']")
+        conditions.append(f"r.sub_ctx['{owner_field}'] == r.res_ctx['{owner_field}']")
 
     # Handle string context directly
     if isinstance(context, str):
@@ -187,7 +187,7 @@ class AccessControl:
 
     def enforce(
         self,
-        subject: str,
+        role: str,
         resource: str,
         action: str,
         subject_context: Optional[Dict[str, Any]] = None,
@@ -197,7 +197,7 @@ class AccessControl:
         Check if subject has permission to perform action on resource
         """
         return self.enforcer.enforce(
-            subject, resource, action, subject_context, resource_context
+            role, resource, action, subject_context, resource_context
         )
 
     def get_accessible_resources(

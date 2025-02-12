@@ -7,18 +7,16 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from functools import partial
 from typing import (
-    Any,
     AsyncGenerator,
     Callable,
-    Dict,
     List,
-    Tuple,
     Optional,
+    Tuple,
     Type,
     TypeVar,
 )
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Request
 from sqlalchemy import Insert, event
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import ORMExecuteState, Session
@@ -26,10 +24,23 @@ from sqlmodel import SQLModel
 
 from cape.api import APIGenerator
 from cape.auth.access_control import AccessControl
-from cape.auth.row_level_security import RLSConfig, RowLevelSecurity
-from cape.notification import NotificationEngine
+from cape.auth.row_level_security import (
+    RLSConfig,
+    RowLevelSecurity,
+)
 from cape.database import AsyncDatabaseManager
-from cape.models import ModelChange, TableEvent
+from cape.exceptions import (
+    PermissionDeniedError,
+    SystemManagedFieldRequired,
+    SystemManagedFieldViolation,
+)
+from cape.models import (
+    AuthContext,
+    AuthContextProvider,
+    ModelChange,
+    TableEvent,
+)
+from cape.notification import NotificationEngine
 from cape.utils import get_original_state
 
 logging.basicConfig(
@@ -40,19 +51,16 @@ logger = logging.getLogger(__name__)
 
 ModelVar = TypeVar("ModelVar", bound=SQLModel)
 
+
 DEFAULT_TIMEOUT = 5
-
-
-@dataclass
-class Context:
-    subject: Optional[str] = None
-    context: Optional[Dict[str, Any]] = None
 
 
 @dataclass
 class Cape:
     app: FastAPI
     db_path: str
+    auth_provider: AuthContextProvider
+
     routers: dict[str, APIGenerator] = field(default_factory=defaultdict)
     notification_engine: NotificationEngine = field(default_factory=NotificationEngine)
     model_registry: dict[str, Type[SQLModel]] = field(default_factory=defaultdict)
@@ -61,7 +69,9 @@ class Cape:
     row_level_security: RowLevelSecurity = field(init=False)
 
     _tasks: List[asyncio.Task] = field(default_factory=list)
-    _pending_subscriptions: List[Tuple[Type[SQLModel], List[Callable[[ModelChange], None]]]] = field(default_factory=list)
+    _pending_subscriptions: List[
+        Tuple[Type[SQLModel], List[Callable[[ModelChange], None]]]
+    ] = field(default_factory=list)
 
     def __post_init__(self):
         self.db_session = AsyncDatabaseManager(self.db_path)
@@ -70,8 +80,21 @@ class Cape:
         self._setup_lifespan()
 
     def _setup_lifespan(self):
+        from contextlib import AsyncExitStack
+
+        existing_lifespan = getattr(self.app.router, "lifespan_context", None)
+
         @asynccontextmanager
         async def lifespan(app: FastAPI):
+            async with AsyncExitStack() as stack:
+                if existing_lifespan:
+                    await stack.enter_async_context(existing_lifespan(app))
+
+                await stack.enter_async_context(cape_lifespan(app))
+                yield
+
+        @asynccontextmanager
+        async def cape_lifespan(app: FastAPI):
             try:
                 logger.info("Starting up Cape")
                 await self._initialize_database_schema()
@@ -122,25 +145,47 @@ class Cape:
         @event.listens_for(Session, "do_orm_execute")
         def _do_orm_execute(orm_execute_state: ORMExecuteState):
             """Listen for query execution and apply RLS filtering"""
-
-            subject = orm_execute_state.session.info["subject"]
-            context = orm_execute_state.session.info["context"]
+            auth_context = orm_execute_state.session.info.get(
+                "auth_context", AuthContext()
+            )
 
             if orm_execute_state.is_insert and isinstance(
                 orm_execute_state.statement, Insert
             ):
-                if not rls.can_create(
-                    subject=subject,
-                    subject_context=context,
-                    statement=orm_execute_state.statement,
-                ):
-                    raise PermissionError(
+                try:
+                    orm_execute_state.statement = (
+                        rls.set_system_managed_fields_statement(
+                            orm_execute_state.statement, auth_context
+                        )
+                    )
+                except (SystemManagedFieldRequired, SystemManagedFieldViolation) as e:
+                    logger.warning("System managed field error", exc_info=e)
+                    raise PermissionDeniedError(
                         "User does not have permission to create this object"
                     )
 
+                if not rls.can_create(
+                    auth_context=auth_context,
+                    statement=orm_execute_state.statement,
+                ):
+                    raise PermissionDeniedError(
+                        "User does not have permission to create this object"
+                    )
             if orm_execute_state.is_select:
                 action = "read"
             elif orm_execute_state.is_update:
+                try:
+                    orm_execute_state.statement = (
+                        rls.set_system_managed_fields_statement(
+                            orm_execute_state.statement, auth_context
+                        )
+                    )
+                except (SystemManagedFieldRequired, SystemManagedFieldViolation) as e:
+                    logger.warning("System managed field error", exc_info=e)
+                    raise PermissionDeniedError(
+                        "User does not have permission to update this object"
+                    )
+
                 action = "update"
             elif orm_execute_state.is_delete:
                 action = "delete"
@@ -148,30 +193,19 @@ class Cape:
                 return
 
             orm_execute_state.statement = rls.filter_query(
-                orm_execute_state.statement, subject, action, context
+                orm_execute_state.statement, action, auth_context
             )
 
         @event.listens_for(Session, "before_flush")
         def _before_flush(session, flush_context, instances):
             """Check permissions before any changes are committed to the database"""
-            context = session.info["context"]
-            subject = session.info["subject"]
-
-            if subject is None or context is None:
-                # TODO: Update error system to support invalid context
-                raise PermissionError("No context provided")
+            auth_context = session.info.get("auth_context", AuthContext())
 
             for obj in session.identity_map.values():
-                # Need to retrieve the object from DB first to make sure user can read.
                 if isinstance(obj, SQLModel):
                     original = get_original_state(obj)
-
-                    if not rls.can_read(
-                        subject=subject,
-                        subject_context=context,
-                        obj=original,
-                    ):
-                        raise PermissionError(
+                    if not rls.can_read(auth_context=auth_context, obj=original):
+                        raise PermissionDeniedError(
                             "User does not have permission to read this object"
                         )
 
@@ -180,36 +214,47 @@ class Cape:
                 if isinstance(obj, SQLModel):
                     original = get_original_state(obj)
 
-                    if not rls.can_update(
-                        subject=subject,
-                        subject_context=context,
-                        obj=original,
-                    ):
-                        raise PermissionError(
-                            "User does not have permission to update this object"
-                        )
+                    try:
+                        if not rls.can_update(
+                            auth_context=auth_context,
+                            obj=original,
+                        ):
+                            raise PermissionDeniedError(
+                                "User does not have permission to update this object"
+                            )
+
+                        if not rls.can_update(
+                            auth_context=auth_context,
+                            obj=obj,
+                        ):
+                            raise PermissionDeniedError(
+                                "User does not have permission to update this object"
+                            )
+                    except PermissionDeniedError as e:
+                        logger.exception("Permission denied", exc_info=e)
+                        raise
 
             # Check permission for new objects
             for obj in session.new:
                 if isinstance(obj, SQLModel):
                     if not rls.can_create(
-                        subject=subject,
-                        subject_context=context,
+                        auth_context=auth_context,
                         obj=obj,
                     ):
-                        raise PermissionError(
+                        raise PermissionDeniedError(
                             "User does not have permission to create this object"
                         )
+                    else:
+                        rls.set_system_managed_fields_orm(obj, auth_context)
 
             # Check permission for deleted objects
             for obj in session.deleted:
                 if isinstance(obj, SQLModel):
                     if not rls.can_delete(
-                        subject=subject,
-                        subject_context=context,
+                        auth_context=auth_context,
                         obj=obj,
                     ):
-                        raise PermissionError(
+                        raise PermissionDeniedError(
                             "User does not have permission to delete this object"
                         )
 
@@ -261,7 +306,7 @@ class Cape:
         for model_name, model in self.model_registry.items():
             self.routers[model_name] = APIGenerator[model](
                 schema=model,
-                get_session=self.get_db_dependency,
+                get_session=self.get_db_dependency_factory(self.auth_provider),
                 notification_engine=self.notification_engine,
                 row_level_security=self.row_level_security,
             )
@@ -322,26 +367,29 @@ class Cape:
 
     @asynccontextmanager
     async def get_session(
-        self, subject: Optional[str] = None, context: Optional[Dict[str, Any]] = None
+        self,
+        auth_context: Optional[AuthContext] = None,
     ) -> AsyncGenerator[AsyncSession]:
         """Get a database session with security context."""
         async with self.db_session.session() as session:
-            session.info["subject"] = subject
-            session.info["context"] = context
+            if auth_context:
+                session.info["auth_context"] = auth_context
             yield session
 
-    async def get_db_dependency(
-        self, subject: Optional[str] = None, context: Optional[Dict[str, Any]] = None
-    ) -> AsyncGenerator[AsyncSession, None]:
-        async with self.db_session.session() as session:
-            session.info["subject"] = subject
-            session.info["context"] = context
-            yield session
+    def get_db_dependency_factory(self, auth_provider: AuthContextProvider):
+        async def get_db_dependency(
+            request: Request, context: Optional[AuthContext] = Depends(auth_provider)
+        ) -> AsyncGenerator[AsyncSession, None]:
+            async with self.db_session.session() as session:
+                if context:
+                    session.info["auth_context"] = context
+                yield session
+
+        return get_db_dependency
 
     def subscribe(self, model: Type[SQLModel]):
         """Decorator to subscribe to model changes."""
 
-        # Check that model belongs to SQLModel
         if not issubclass(model, SQLModel):
             raise TypeError(f"Model {model.__name__} is not a SQLModel")
 

@@ -38,14 +38,14 @@ def test_context_based_policies_with_list(ac):
 
     # Test with matching contexts
     assert ac.enforce(
-        subject="editor",
+        role="editor",
         resource="articles",
         action="edit",
         subject_context={"department": "editorial"},
         resource_context={"department": "editorial"},
     )
     assert ac.enforce(
-        subject="reviewer",
+        role="reviewer",
         resource="articles",
         action="read",
         subject_context={"department": "review"},
