@@ -675,7 +675,6 @@ async def test_update_system_managed_fields_blocked(cape):
             await session.execute(stmt)
             await session.commit()
         assert exc_info.value.status_code == 403
-
             
         # # 3. Try bulk update
         with pytest.raises(PermissionDeniedError) as exc_info:
@@ -757,3 +756,124 @@ async def test_bulk_update_permission_checks(cape):
                 assert doc.content == "Unauthorized update"  # Alice's docs should be updated
             else:
                 assert doc.content in ("test", "Content 2")   # Bob's docs should remain unchanged
+
+@pytest.mark.asyncio
+async def test_privileged_session_bypass_rls(cape):
+    """Test that privileged session bypasses RLS checks"""
+    # First create test documents with different owners
+    async with cape.get_session(AuthContext(subject="dave")) as session:
+        doc_alice = SecureDocument(title="Dave Doc", content="test", org_id="org1")
+        session.add(doc_alice)
+        await session.commit()
+
+    async with cape.get_session(AuthContext(subject="elaine")) as session:
+        doc_bob = SecureDocument(title="Elaine Doc", content="test", org_id="org2")
+        session.add(doc_bob)
+        await session.commit()
+
+    # Test regular session (should only see owned documents)
+    async with cape.get_session(AuthContext(subject="dave")) as session:
+        results = await session.execute(select(SecureDocument))
+        docs = results.scalars().all()
+        assert len(docs) == 1  # Should only see Alice's doc
+        assert docs[0].title == "Dave Doc"
+
+    # Test privileged session (should see all documents)
+    async with cape.get_privileged_session() as session:
+        results = await session.execute(select(SecureDocument))
+        docs = results.scalars().all()
+        assert len(docs) >= 2  # Should see all docs
+        titles = {doc.title for doc in docs}
+        assert "Dave Doc" in titles
+        assert "Elaine Doc" in titles
+
+@pytest.mark.asyncio
+async def test_privileged_session_write_operations(cape):
+    """Test that privileged session can perform write operations on any document"""
+    # Create test documents
+    async with cape.get_session(AuthContext(subject="alice")) as session:
+        doc = SecureDocument(title="Test Doc", content="Original", org_id="org1")
+        session.add(doc)
+        await session.commit()
+        doc_id = doc.id
+
+    # Test update with privileged session
+    async with cape.get_privileged_session() as session:
+        doc = await session.get(SecureDocument, doc_id)
+        doc.content = "Updated by privileged session"
+        doc.owner_id = "system"  # Can modify system-managed fields
+        await session.commit()
+
+    # Verify changes
+    async with cape.get_privileged_session() as session:
+        doc = await session.get(SecureDocument, doc_id)
+        assert doc.content == "Updated by privileged session"
+        assert doc.owner_id == "system"
+
+@pytest.mark.asyncio
+async def test_privileged_session_bulk_operations(cape):
+    """Test that privileged session can perform bulk operations"""
+    # Create test data
+    async with cape.get_privileged_session() as session:
+        # Bulk insert
+        docs = [
+            SecureDocument(title=f"Bulk Doc {i}", content="test", org_id=f"org{i}", owner_id="system")
+            for i in range(3)
+        ]
+        session.add_all(docs)
+        await session.commit()
+
+        # Bulk update
+        stmt = (
+            update(SecureDocument)
+            .where(SecureDocument.title.like("Bulk Doc%"))
+            .values(content="Bulk updated")
+        )
+        await session.execute(stmt)
+        await session.commit()
+
+        # Verify updates
+        results = await session.execute(
+            select(SecureDocument)
+            .where(SecureDocument.title.like("Bulk Doc%"))
+        )
+        updated_docs = results.scalars().all()
+        assert len(updated_docs) == 3
+        assert all(doc.content == "Bulk updated" for doc in updated_docs)
+
+        # Bulk delete
+        stmt = delete(SecureDocument).where(SecureDocument.title.like("Bulk Doc%"))
+        await session.execute(stmt)
+        await session.commit()
+
+        # Verify deletion
+        results = await session.execute(
+            select(SecureDocument)
+            .where(SecureDocument.title.like("Bulk Doc%"))
+        )
+        remaining_docs = results.scalars().all()
+        assert len(remaining_docs) == 0
+
+@pytest.mark.asyncio
+async def test_privileged_session_context_isolation(cape):
+    """Test that privileged session context doesn't affect regular sessions"""
+    # Create test document with privileged session
+    async with cape.get_privileged_session() as session:
+        doc = SecureDocument(title="System Doc", content="test", org_id="org1", owner_id="system")
+        session.add(doc)
+        await session.commit()
+
+    # Verify regular session still has RLS enforced
+    async with cape.get_session(AuthContext(subject="alice")) as session:
+        results = await session.execute(
+            select(SecureDocument)
+            .where(SecureDocument.title == "System Doc")
+        )
+        docs = results.scalars().all()
+        assert len(docs) == 0  # Regular session shouldn't see system-owned doc
+
+    # Verify privileged session can still see everything
+    async with cape.get_privileged_session() as session:
+        results = await session.execute(select(SecureDocument))
+        docs = results.scalars().all()
+        assert any(doc.title == "System Doc" for doc in docs)

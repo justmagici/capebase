@@ -54,6 +54,7 @@ class APIGenerator(Generic[T], APIRouter):
         update_schema: Optional[Type[T]] = None,
         prefix: Optional[str] = None,
         tags: Optional[List[str | Enum]] = None,
+        routes: Optional[List[str]] = None,
         **kwargs: Any,
     ):
         self.schema = schema
@@ -63,7 +64,6 @@ class APIGenerator(Generic[T], APIRouter):
         self.notification_engine = notification_engine
         self.row_level_security = row_level_security
 
-        # TODO: Add pagination support
         prefix = str(prefix or self.schema.__name__).lower()
         prefix = self._base_path + prefix.strip("/")
         tags = tags or [prefix.strip("/").capitalize()]
@@ -71,6 +71,27 @@ class APIGenerator(Generic[T], APIRouter):
         # Need to pass in additional kwargs
         super().__init__(prefix=prefix, tags=tags, **kwargs)
 
+        # Define available routes and their setup functions
+        route_mapping = {
+            "list": self._setup_list_route,
+            "create": self._setup_create_route,
+            "subscribe": self._setup_subscribe_route,
+            "get": self._setup_get_route,
+            "update": self._setup_update_route,
+            "delete": self._setup_delete_route,
+        }
+
+        # If routes parameter is None, create all routes
+        routes_to_create = routes or list(route_mapping.keys())
+
+        # Create only specified routes
+        for route in routes_to_create:
+            if route in route_mapping:
+                route_mapping[route]()
+            else:
+                logger.warning(f"Unknown route type: {route}")
+
+    def _setup_list_route(self) -> None:
         self._add_api_route(
             "",
             endpoint=self._list(),
@@ -80,6 +101,7 @@ class APIGenerator(Generic[T], APIRouter):
             description=f"List all items of type {self.schema.__name__}",
         )
 
+    def _setup_create_route(self) -> None:
         self._add_api_route(
             "",
             methods=["POST"],
@@ -89,6 +111,7 @@ class APIGenerator(Generic[T], APIRouter):
             description=f"Create an item of type {self.schema.__name__}",
         )
 
+    def _setup_subscribe_route(self) -> None:
         self.add_api_route(
             "/subscribe",
             methods=["GET"],
@@ -97,6 +120,7 @@ class APIGenerator(Generic[T], APIRouter):
             description=f"Subscribe to changes of type {self.schema.__name__}",
         )
 
+    def _setup_get_route(self) -> None:
         self._add_api_route(
             "/{item_id}",
             methods=["GET"],
@@ -106,6 +130,7 @@ class APIGenerator(Generic[T], APIRouter):
             description=f"Get an item of type {self.schema.__name__}",
         )
 
+    def _setup_update_route(self) -> None:
         self.add_api_route(
             "/{item_id}",
             methods=["PUT"],
@@ -115,6 +140,7 @@ class APIGenerator(Generic[T], APIRouter):
             description=f"Update an item of type {self.schema.__name__}",
         )
 
+    def _setup_delete_route(self) -> None:
         self.add_api_route(
             "/{item_id}",
             methods=["DELETE"],
@@ -226,11 +252,11 @@ class APIGenerator(Generic[T], APIRouter):
         ) -> EventSourceResponse:
             channel = self.notification_engine.get_channel(self.schema)
 
-            async def event_generator():
+            async def event_generator(session: AsyncSession):
                 try:
                     async for change in channel.subscribe():
                         auth_context = session.info["auth_context"]
-
+                        
                         if not self.row_level_security.can_read(
                             auth_context, change.payload
                         ):
@@ -244,7 +270,7 @@ class APIGenerator(Generic[T], APIRouter):
                 except Exception as e:
                     logger.error(f"Error in subscription for {self.schema.__name__}: {e}")
 
-            return EventSourceResponse(event_generator(), send_timeout=5)
+            return EventSourceResponse(event_generator(session), send_timeout=5)
 
         return route
 

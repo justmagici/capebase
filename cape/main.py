@@ -13,7 +13,6 @@ from typing import (
     Optional,
     Tuple,
     Type,
-    TypeVar,
 )
 
 from fastapi import Depends, FastAPI, Request
@@ -43,16 +42,15 @@ from cape.models import (
 from cape.notification import NotificationEngine
 from cape.utils import get_original_state
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
 logger = logging.getLogger(__name__)
-
-ModelVar = TypeVar("ModelVar", bound=SQLModel)
 
 
 DEFAULT_TIMEOUT = 5
+
+@dataclass
+class PublishConfig:
+    model: Type[SQLModel]
+    routes: Optional[List[str]] = None
 
 
 @dataclass
@@ -63,7 +61,7 @@ class Cape:
 
     routers: dict[str, APIGenerator] = field(default_factory=defaultdict)
     notification_engine: NotificationEngine = field(default_factory=NotificationEngine)
-    model_registry: dict[str, Type[SQLModel]] = field(default_factory=defaultdict)
+    model_registry: dict[str, PublishConfig] = field(default_factory=defaultdict)
 
     db_session: AsyncDatabaseManager = field(init=False)
     row_level_security: RowLevelSecurity = field(init=False)
@@ -145,6 +143,10 @@ class Cape:
         @event.listens_for(Session, "do_orm_execute")
         def _do_orm_execute(orm_execute_state: ORMExecuteState):
             """Listen for query execution and apply RLS filtering"""
+            is_privileged = orm_execute_state.session.info.get("is_privileged", False)
+            if is_privileged:
+                return
+
             auth_context = orm_execute_state.session.info.get(
                 "auth_context", AuthContext()
             )
@@ -199,6 +201,10 @@ class Cape:
         @event.listens_for(Session, "before_flush")
         def _before_flush(session, flush_context, instances):
             """Check permissions before any changes are committed to the database"""
+            is_privileged = session.info.get("is_privileged", False)
+            if is_privileged:
+                return
+
             auth_context = session.info.get("auth_context", AuthContext())
 
             for obj in session.identity_map.values():
@@ -259,15 +265,15 @@ class Cape:
                         )
 
     def _setup_publish_handlers(self):
-        for model in self.model_registry.values():
+        for config in self.model_registry.values():
             event.listen(
-                model, "after_insert", partial(self._notify_change, event_type="INSERT")
+                config.model, "after_insert", partial(self._notify_change, event_type="INSERT")
             )
             event.listen(
-                model, "after_update", partial(self._notify_change, event_type="UPDATE")
+                config.model, "after_update", partial(self._notify_change, event_type="UPDATE")
             )
             event.listen(
-                model, "after_delete", partial(self._notify_change, event_type="DELETE")
+                config.model, "after_delete", partial(self._notify_change, event_type="DELETE")
             )
 
     def _add_task(self, coro) -> asyncio.Task:
@@ -303,12 +309,13 @@ class Cape:
         self._add_task(self.notification_engine.notify(change))
 
     def _setup_crud_routes(self):
-        for model_name, model in self.model_registry.items():
-            self.routers[model_name] = APIGenerator[model](
-                schema=model,
+        for model_name, config in self.model_registry.items():
+            self.routers[model_name] = APIGenerator[config.model](
+                schema=config.model,
                 get_session=self.get_db_dependency_factory(self.auth_provider),
                 notification_engine=self.notification_engine,
                 row_level_security=self.row_level_security,
+                routes=config.routes,
             )
             self.app.include_router(self.routers[model_name])
 
@@ -316,14 +323,13 @@ class Cape:
         """Set up all pending model change subscriptions."""
         for model, callbacks in self._pending_subscriptions:
             for callback in callbacks:
-
-                async def subscription_task():
+                async def subscription_task(cb, model):
                     async for change in self.notification_engine.get_channel(
                         model
                     ).subscribe():
-                        await callback(change)
-
-                self._add_task(subscription_task())
+                        await cb(change)
+                        
+                self._add_task(subscription_task(callback, model))
 
     def permission_required(
         self,
@@ -355,13 +361,13 @@ class Cape:
             return decorator(cls)
         return decorator
 
-    def publish(self, cls: Type[SQLModel]) -> Type[SQLModel]:
+    def publish(self, cls: Type[SQLModel], routes: Optional[List[str]] = None) -> Type[SQLModel]:
         if not issubclass(cls, SQLModel):
             raise TypeError(
                 f"@publish can only be applied to SQLModel classes, not {type(cls).__name__}."
             )
 
-        self.model_registry[cls.__name__] = cls
+        self.model_registry[cls.__name__] = PublishConfig(model=cls, routes=routes)
 
         return cls
 
@@ -374,6 +380,12 @@ class Cape:
         async with self.db_session.session() as session:
             if auth_context:
                 session.info["auth_context"] = auth_context
+            yield session
+
+    @asynccontextmanager
+    async def get_privileged_session(self) -> AsyncGenerator[AsyncSession]:
+        async with self.db_session.session() as session:
+            session.info["is_privileged"] = True
             yield session
 
     def get_db_dependency_factory(self, auth_provider: AuthContextProvider):
