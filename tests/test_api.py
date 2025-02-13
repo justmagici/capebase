@@ -14,7 +14,7 @@ from cape.auth.access_control import AccessControl
 from cape.auth.row_level_security import RowLevelSecurity
 from cape.notification import NotificationEngine
 from cape.database import AsyncDatabaseManager
-from cape.models import ModelChange
+from cape.models import ModelChange, AuthContext
 
 
 # Base model for shared attributesx
@@ -283,7 +283,7 @@ class TestSubscribeRoute:
 
         async def get_session():
             class MockSession:
-                info = {"subject": "test_user", "context": {}}
+                info = {"auth_context":  AuthContext(subject="test_user", context={"org": "org1"})}
 
             return MockSession()
 
@@ -342,12 +342,12 @@ class TestSubscribeRoute:
 
         async def get_session():
             class MockSession:
-                info = {"subject": "test_user", "context": {"org": "org1"}}
+                info = {"auth_context": AuthContext(subject="test_user", context={"org": "org1"})}
 
             return MockSession()
 
         class RestrictiveRLS(MockRLS):
-            def can_read(self, subject, context, model):
+            def can_read(self, auth_context, model):
                 return model.name != "restricted"
 
         api = APIGenerator(
@@ -394,7 +394,7 @@ class TestSubscribeRoute:
 
 # Mock RLS for testing
 class MockRLS:
-    def can_read(self, subject, context, model):
+    def can_read(self, auth_context, model):
         return True
 
 

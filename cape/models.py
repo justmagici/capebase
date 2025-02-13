@@ -8,7 +8,6 @@ from cape.types import ModelType
 
 TableEvent = Literal["INSERT", "UPDATE", "DELETE", "*"]
 
-
 UserT = TypeVar("UserT")
 
 @dataclass(frozen=True)

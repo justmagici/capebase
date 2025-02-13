@@ -229,13 +229,12 @@ class APIGenerator(Generic[T], APIRouter):
             async def event_generator():
                 try:
                     async for change in channel.subscribe():
-                        subject = session.info["subject"]
-                        context = session.info["context"]
+                        auth_context = session.info["auth_context"]
 
                         if not self.row_level_security.can_read(
-                            subject, context, change.payload
+                            auth_context, change.payload
                         ):
-                            logger.warning(f"User {subject} does not have permission to read {change.payload}")
+                            logger.warning(f"User does not have permission to read {change.payload}")
                             continue
 
                         yield dict(data=change.to_json())
