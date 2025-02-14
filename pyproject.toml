@@ -1,18 +1,23 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "pyrestore"
+name = "cape"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.13"
 dependencies = [
     "aiosqlite>=0.20.0",
     "casbin>=1.37.0",
+    "fastapi-users>=14.0.1",
     "fastapi>=0.115.6",
     "greenlet>=3.1.1",
     "httpx-sse>=0.4.0",
     "pycasbin>=1.36.3",
     "pydantic>=2.10.4",
-    "pytest>=8.3.4",
     "sqlmodel>=0.0.22",
     "sse-starlette>=2.2.1",
 ]
@@ -25,10 +30,16 @@ strict = true
 
 [dependency-groups]
 dev = [
+    "aiofiles>=24.1.0",
     "async-asgi-testclient>=1.4.11",
     "httpx>=0.28.1",
+    "jinja2>=3.1.5",
     "pytest-asyncio>=0.25.2",
+    "python-multipart>=0.0.20",
     "uvicorn>=0.34.0",
+    "asyncpg>=0.30.0",
+    "fastapi-users-db-sqlalchemy>=7.0.0",
+    "pytest>=8.3.4",
 ]
 
 [tool.pytest.ini_options]
