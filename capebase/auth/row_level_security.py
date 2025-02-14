@@ -23,9 +23,9 @@ from sqlalchemy.orm import Query
 from sqlalchemy.sql.elements import BindParameter, ClauseElement
 from sqlmodel import SQLModel
 
-from cape.auth.access_control import AccessControl
-from cape.exceptions import SystemManagedFieldRequired, SystemManagedFieldViolation
-from cape.models import AuthContext, AuthField
+from capebase.auth.access_control import AccessControl
+from capebase.exceptions import SystemManagedFieldRequired, SystemManagedFieldViolation
+from capebase.models import AuthContext, AuthField
 
 WILDCARD = "*"
 

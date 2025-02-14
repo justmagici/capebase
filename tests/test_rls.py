@@ -7,8 +7,8 @@ from sqlalchemy import delete, insert, update
 from sqlalchemy.engine import Row
 from sqlmodel import Field, SQLModel, select
 
-from cape.main import AuthContext, Cape, PermissionDeniedError
-from cape.models import FromSubject
+from capebase.main import AuthContext, CapeBase, PermissionDeniedError
+from capebase.models import FromSubject
 
 
 class SecureDocument(SQLModel, table=True):
@@ -38,7 +38,7 @@ async def get_user_context():
 
 @pytest_asyncio.fixture
 async def cape(app):
-    cape = Cape(app=app, db_path="sqlite+aiosqlite:///:memory:", auth_provider=get_user_context)
+    cape = CapeBase(app=app, db_path="sqlite+aiosqlite:///:memory:", auth_provider=get_user_context)
 
     async with cape.app.router.lifespan_context(app):
         yield cape
@@ -65,7 +65,7 @@ async def setup_test_permission(cape):
     cape.permission_required(RelatedDoc, role="*", actions=["read", "create"])
 
 @pytest_asyncio.fixture(autouse=True)
-async def create_test_docs(cape: Cape, setup_test_permission):
+async def create_test_docs(cape: CapeBase, setup_test_permission):
     async with cape.get_session(AuthContext(subject="alice", context={"org_id": "org1"})) as session:
         s1 = SecureDocument(title="Doc 1", content="Content 1", org_id="org1")
         s2 = SecureDocument(title="Doc 3", content="Content 3", org_id="org2")
@@ -82,7 +82,7 @@ async def create_test_docs(cape: Cape, setup_test_permission):
         session.add(s4)
         await session.commit()
 
-async def query_docs(cape: Cape, SecureDocument: Type[SQLModel], subject: str, context: dict = {}) -> Sequence[SQLModel]:
+async def query_docs(cape: CapeBase, SecureDocument: Type[SQLModel], subject: str, context: dict = {}) -> Sequence[SQLModel]:
     """Query documents with security context.
     
     Args:

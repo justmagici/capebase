@@ -4,7 +4,7 @@ from typing import Generic, Literal, Dict, Any, Union, Callable, TypeVar, Option
 
 from sqlmodel import SQLModel
 
-from cape.types import ModelType
+from capebase.types import ModelType
 
 TableEvent = Literal["INSERT", "UPDATE", "DELETE", "*"]
 

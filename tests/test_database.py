@@ -1,7 +1,7 @@
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
-from cape.database import AsyncDatabaseManager
+from capebase.database import AsyncDatabaseManager
 from sqlalchemy import text
 
 @pytest_asyncio.fixture

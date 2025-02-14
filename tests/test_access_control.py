@@ -1,6 +1,6 @@
 import pytest
 
-from cape.auth.access_control import AccessControl
+from capebase.auth.access_control import AccessControl
 
 
 @pytest.fixture

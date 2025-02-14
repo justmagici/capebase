@@ -5,8 +5,8 @@ from datetime import datetime
 import pytest
 from sqlmodel import Field, SQLModel
 
-from cape.notification import NotificationEngine
-from cape.models import ModelChange
+from capebase.notification import NotificationEngine
+from capebase.models import ModelChange
 
 logger = logging.getLogger(__name__)
 

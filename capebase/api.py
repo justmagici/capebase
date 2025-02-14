@@ -21,8 +21,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel, select
 from sse_starlette import EventSourceResponse
 
-from cape.auth.row_level_security import RowLevelSecurity
-from cape.notification import NotificationEngine
+from capebase.auth.row_level_security import RowLevelSecurity
+from capebase.notification import NotificationEngine
 
 logger = logging.getLogger(__name__)
 

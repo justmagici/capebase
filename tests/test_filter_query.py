@@ -3,9 +3,9 @@ from typing import Optional
 import pytest
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
-from cape.auth.access_control import AccessControl
-from cape.models import AuthContext
-from cape.auth.row_level_security import RLSConfig, RowLevelSecurity
+from capebase.auth.access_control import AccessControl
+from capebase.models import AuthContext
+from capebase.auth.row_level_security import RLSConfig, RowLevelSecurity
 
 
 # Test Models

@@ -9,12 +9,12 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlmodel import Field, SQLModel
 
-from cape.api import APIGenerator
-from cape.auth.access_control import AccessControl
-from cape.auth.row_level_security import RowLevelSecurity
-from cape.notification import NotificationEngine
-from cape.database import AsyncDatabaseManager
-from cape.models import ModelChange, AuthContext
+from capebase.api import APIGenerator
+from capebase.auth.access_control import AccessControl
+from capebase.auth.row_level_security import RowLevelSecurity
+from capebase.notification import NotificationEngine
+from capebase.database import AsyncDatabaseManager
+from capebase.models import ModelChange, AuthContext
 
 
 # Base model for shared attributesx
@@ -279,7 +279,7 @@ class TestSubscribeRoute:
     ):
         """Test that SSE subscription receives model changes"""
         # Setup API route
-        from cape.api import APIGenerator
+        from capebase.api import APIGenerator
 
         async def get_session():
             class MockSession:

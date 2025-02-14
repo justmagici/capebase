@@ -21,26 +21,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import ORMExecuteState, Session
 from sqlmodel import SQLModel
 
-from cape.api import APIGenerator
-from cape.auth.access_control import AccessControl
-from cape.auth.row_level_security import (
+from capebase.api import APIGenerator
+from capebase.auth.access_control import AccessControl
+from capebase.auth.row_level_security import (
     RLSConfig,
     RowLevelSecurity,
 )
-from cape.database import AsyncDatabaseManager
-from cape.exceptions import (
+from capebase.database import AsyncDatabaseManager
+from capebase.exceptions import (
     PermissionDeniedError,
     SystemManagedFieldRequired,
     SystemManagedFieldViolation,
 )
-from cape.models import (
+from capebase.models import (
     AuthContext,
     AuthContextProvider,
     ModelChange,
     TableEvent,
 )
-from cape.notification import NotificationEngine
-from cape.utils import get_original_state
+from capebase.notification import NotificationEngine
+from capebase.utils import get_original_state
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ class PublishConfig:
 
 
 @dataclass
-class Cape:
+class CapeBase:
     app: FastAPI
     db_path: str
     auth_provider: AuthContextProvider

@@ -16,8 +16,8 @@ from weakref import WeakSet
 
 from sqlmodel import SQLModel
 
-from cape.models import ModelChange, NotificationLog
-from cape.types import ModelType
+from capebase.models import ModelChange, NotificationLog
+from capebase.types import ModelType
  
 logger = logging.getLogger(__name__)
 

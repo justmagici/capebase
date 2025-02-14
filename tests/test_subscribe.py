@@ -7,8 +7,8 @@ import pytest_asyncio
 from sqlmodel import SQLModel
 from datetime import datetime
 
-from cape.models import ModelChange
-from cape.main import Cape, AuthContext
+from capebase.models import ModelChange
+from capebase.main import CapeBase, AuthContext
 
 
 @pytest.fixture
@@ -17,7 +17,7 @@ def app():
 
 @pytest_asyncio.fixture
 async def cape(app):
-    cape = Cape(app=app, db_path="sqlite+aiosqlite:///:memory:", auth_provider=lambda: AuthContext())
+    cape = CapeBase(app=app, db_path="sqlite+aiosqlite:///:memory:", auth_provider=lambda: AuthContext())
 
     async with cape.app.router.lifespan_context(app):
         yield cape
@@ -26,7 +26,7 @@ async def cape(app):
         await conn.run_sync(SQLModel.metadata.drop_all)
 
 
-def test_subscribe_decorator(cape: Cape):    
+def test_subscribe_decorator(cape: CapeBase):    
     # Create a test model
     class TestModel(SQLModel):
         pass
@@ -47,7 +47,7 @@ def test_subscribe_decorator(cape: Cape):
     assert test_handler in subscriptions
 
 
-def test_multiple_subscriptions_same_model(cape: Cape):
+def test_multiple_subscriptions_same_model(cape: CapeBase):
     class TestModel(SQLModel):
         pass
     
@@ -69,7 +69,7 @@ def test_multiple_subscriptions_same_model(cape: Cape):
     assert any(handler2 in subs for subs in handlers)
 
 
-def test_subscribe_invalid_model(cape: Cape):    
+def test_subscribe_invalid_model(cape: CapeBase):    
     # Try to subscribe to a non-SQLModel class
     class InvalidModel:
         pass
@@ -80,7 +80,7 @@ def test_subscribe_invalid_model(cape: Cape):
             pass
 
 
-def test_subscribe_handler_called(cape: Cape):
+def test_subscribe_handler_called(cape: CapeBase):
     class TestModel(SQLModel):
         pass
     
