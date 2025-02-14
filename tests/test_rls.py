@@ -3,7 +3,7 @@ from typing import Optional, Sequence, Type, List
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI, HTTPException
-from sqlalchemy import delete, insert, update
+from sqlalchemy import delete, insert, update, text
 from sqlalchemy.engine import Row
 from sqlmodel import Field, SQLModel, select
 
@@ -877,3 +877,54 @@ async def test_privileged_session_context_isolation(cape):
         results = await session.execute(select(SecureDocument))
         docs = results.scalars().all()
         assert any(doc.title == "System Doc" for doc in docs)
+
+@pytest.mark.asyncio
+async def test_raw_sql_statements(cape):
+    """Test that raw SQL statements raise NotImplementedError"""
+    # First create some test data using ORM
+    async with cape.get_session(AuthContext(subject="david", context={"org_id": "org1"})) as session:
+        doc = SecureDocument(title="SQL Test Doc", content="Original", org_id="org1")
+        session.add(doc)
+        await session.commit()
+        doc_id = doc.id
+
+    # Test raw SQL select raises error
+    async with cape.get_session(AuthContext(subject="david")) as session:
+        with pytest.raises(NotImplementedError):
+            await session.execute(
+                text("SELECT * FROM securedocument WHERE title = :title"),
+                {"title": "SQL Test Doc"}
+            )
+
+        # Raw SQL update should raise error
+        with pytest.raises(NotImplementedError):
+            await session.execute(
+                text("UPDATE securedocument SET content = :content WHERE id = :id"),
+                {"content": "Updated via SQL", "id": doc_id}
+            )
+
+@pytest.mark.asyncio
+async def test_raw_sql_joins(cape):
+    """Test that raw SQL joins raise NotImplementedError"""
+    from sqlalchemy import text
+    import pytest
+
+    # Create test data using ORM
+    async with cape.get_session(AuthContext(subject="alice", context={"org_id": "org1"})) as session:
+        doc = SecureDocument(title="Join Test Doc", content="test", org_id="org1")
+        session.add(doc)
+        await session.commit()
+
+        related = RelatedDoc(doc_id=doc.id, note="Related note")
+        session.add(related)
+        await session.commit()
+
+    # Test join with raw SQL raises error
+    async with cape.get_session(AuthContext(subject="alice")) as session:
+        with pytest.raises(NotImplementedError):
+            await session.execute(text("""
+                SELECT s.title, r.note 
+                FROM securedocument s
+                JOIN relateddoc r ON s.id = r.doc_id
+                WHERE s.title = :title
+            """), {"title": "Join Test Doc"})

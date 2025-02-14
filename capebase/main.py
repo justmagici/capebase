@@ -19,6 +19,7 @@ from fastapi import Depends, FastAPI, Request
 from sqlalchemy import Insert, event
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import ORMExecuteState, Session
+from sqlalchemy.sql.elements import TextClause
 from sqlmodel import SQLModel
 
 from capebase.api import APIGenerator
@@ -153,6 +154,10 @@ class CapeBase:
             auth_context = orm_execute_state.session.info.get(
                 "auth_context", AuthContext()
             )
+
+            if isinstance(orm_execute_state.statement, TextClause):
+                # TODO: Instead of throwing error here, consider allowing direct SQL Statement without auth check through configuration
+                raise NotImplementedError("TextClause queries are not supported for row-level security filtering")
 
             if orm_execute_state.is_insert and isinstance(
                 orm_execute_state.statement, Insert

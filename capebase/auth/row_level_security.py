@@ -22,6 +22,7 @@ from sqlalchemy import Delete, Insert, Select, Update, and_, insert, or_
 from sqlalchemy.orm import Query
 from sqlalchemy.sql.elements import BindParameter, ClauseElement
 from sqlmodel import SQLModel
+from sqlalchemy.sql.elements import TextClause
 
 from capebase.auth.access_control import AccessControl
 from capebase.exceptions import SystemManagedFieldRequired, SystemManagedFieldViolation
@@ -364,6 +365,9 @@ class RowLevelSecurity:
         self, query: Query, action: str, auth_context: AuthContext
     ) -> Query:
         conditions: List[ClauseElement] = []
+
+        if isinstance(query, TextClause):
+            raise NotImplementedError("TextClause queries are not supported for row-level security filtering")
 
         # Determine the FROM objects based on query type
         if query.is_select and isinstance(query, Select):
