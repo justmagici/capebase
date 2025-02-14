@@ -392,6 +392,54 @@ class TestSubscribeRoute:
         assert "restricted" not in events[0]
 
 
+    @pytest.mark.asyncio
+    async def test_schema_customization(self, app, db, notification_engine, row_level_security):
+        """Test that create_schema and update_schema are properly used"""
+        async def get_session():
+            async with db.session() as session:
+                yield session
+
+        # Create custom schemas
+        class CustomCreate(SQLModel):
+            name: str
+            description: str = "new"  # Default value for creation
+
+        class CustomUpdate(SQLModel):
+            name: Optional[str] = None
+            status: Optional[str] = None  # Additional field for updates
+
+        async with db.connect() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+
+        # Initialize API with custom schemas
+        generator = APIGenerator[TestItem](
+            schema=TestItem,
+            create_schema=CustomCreate,
+            update_schema=CustomUpdate,
+            get_session=get_session,
+            notification_engine=notification_engine,
+            row_level_security=row_level_security,
+        )
+        app.include_router(generator)
+
+        async with AsyncTestClient(app) as client:
+            # Test create with custom schema
+            create_data = {"name": "Test Item"}
+            response = await client.post("/testitem", json=create_data)
+            assert response.status_code == 200
+            created = response.json()
+            assert created["name"] == "Test Item"
+            assert created["description"] == "new"  # Default from CustomCreate
+
+            # Test update with custom schema
+            item_id = created["id"]
+            update_data = {"status": "active"}  # Using CustomUpdate field
+            response = await client.put(f"/testitem/{item_id}", json=update_data)
+            assert response.status_code == 200
+            updated = response.json()
+            assert updated["status"] == "active"
+
+
 # Mock RLS for testing
 class MockRLS:
     def can_read(self, auth_context, model):
@@ -455,3 +503,5 @@ async def collect_sse_events(
 
     # Run collection with timeout
     return await asyncio.wait_for(_collect(), timeout=timeout)
+
+

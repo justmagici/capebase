@@ -47,10 +47,13 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 5
 
+
 @dataclass
 class PublishConfig:
     model: Type[SQLModel]
     routes: Optional[List[str]] = None
+    create_schema: Optional[Type[SQLModel]] = None
+    update_schema: Optional[Type[SQLModel]] = None
 
 
 @dataclass
@@ -267,13 +270,19 @@ class CapeBase:
     def _setup_publish_handlers(self):
         for config in self.model_registry.values():
             event.listen(
-                config.model, "after_insert", partial(self._notify_change, event_type="INSERT")
+                config.model,
+                "after_insert",
+                partial(self._notify_change, event_type="INSERT"),
             )
             event.listen(
-                config.model, "after_update", partial(self._notify_change, event_type="UPDATE")
+                config.model,
+                "after_update",
+                partial(self._notify_change, event_type="UPDATE"),
             )
             event.listen(
-                config.model, "after_delete", partial(self._notify_change, event_type="DELETE")
+                config.model,
+                "after_delete",
+                partial(self._notify_change, event_type="DELETE"),
             )
 
     def _add_task(self, coro) -> asyncio.Task:
@@ -312,6 +321,8 @@ class CapeBase:
         for model_name, config in self.model_registry.items():
             self.routers[model_name] = APIGenerator[config.model](
                 schema=config.model,
+                create_schema=config.create_schema,
+                update_schema=config.update_schema,
                 get_session=self.get_db_dependency_factory(self.auth_provider),
                 notification_engine=self.notification_engine,
                 row_level_security=self.row_level_security,
@@ -323,12 +334,13 @@ class CapeBase:
         """Set up all pending model change subscriptions."""
         for model, callbacks in self._pending_subscriptions:
             for callback in callbacks:
+
                 async def subscription_task(cb, model):
                     async for change in self.notification_engine.get_channel(
                         model
                     ).subscribe():
                         await cb(change)
-                        
+
                 self._add_task(subscription_task(callback, model))
 
     def permission_required(
@@ -361,13 +373,21 @@ class CapeBase:
             return decorator(cls)
         return decorator
 
-    def publish(self, cls: Type[SQLModel], routes: Optional[List[str]] = None) -> Type[SQLModel]:
+    def publish(
+        self,
+        cls: Type[SQLModel],
+        routes: Optional[List[str]] = None,
+        create_schema: Optional[Type[SQLModel]] = None,
+        update_schema: Optional[Type[SQLModel]] = None,
+    ) -> Type[SQLModel]:
         if not issubclass(cls, SQLModel):
             raise TypeError(
                 f"@publish can only be applied to SQLModel classes, not {type(cls).__name__}."
             )
 
-        self.model_registry[cls.__name__] = PublishConfig(model=cls, routes=routes)
+        self.model_registry[cls.__name__] = PublishConfig(
+            model=cls, routes=routes, create_schema=create_schema, update_schema=update_schema
+        )
 
         return cls
 
