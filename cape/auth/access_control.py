@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Optional, Union
 
-from casbin.enforcer import Enforcer
-from casbin.model import Model
+from casbin.enforcer import Enforcer # type: ignore
+from casbin.model import Model # type: ignore
 
 """
 RBAC (Role-Based Access Control) Model with Context Support
