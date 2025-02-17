@@ -8,7 +8,7 @@ from sqlalchemy.engine import Row
 from sqlmodel import Field, SQLModel, select
 
 from capebase.main import AuthContext, CapeBase, PermissionDeniedError
-from capebase.models import FromSubject
+from capebase.models import FROM_AUTH_ID
 
 
 class SecureDocument(SQLModel, table=True):
@@ -18,7 +18,7 @@ class SecureDocument(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str
     content: str
-    owner_id: FromSubject
+    owner_id: FROM_AUTH_ID
     org_id: str
 
 # Create a related model for testing joins
@@ -66,7 +66,7 @@ async def setup_test_permission(cape):
 
 @pytest_asyncio.fixture(autouse=True)
 async def create_test_docs(cape: CapeBase, setup_test_permission):
-    async with cape.get_session(AuthContext(subject="alice", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="alice", context={"org_id": "org1"})) as session:
         s1 = SecureDocument(title="Doc 1", content="Content 1", org_id="org1")
         s2 = SecureDocument(title="Doc 3", content="Content 3", org_id="org2")
 
@@ -74,7 +74,7 @@ async def create_test_docs(cape: CapeBase, setup_test_permission):
         session.add(s2)
         await session.commit()
 
-    async with cape.get_session(AuthContext(subject="bob")) as session:
+    async with cape.get_session(AuthContext(id="bob")) as session:
         s3 = SecureDocument(title="Doc 2", content="Content 2", org_id="org1")
         s4 = SecureDocument(title="Doc 4", content="Content 4", org_id="org2")
 
@@ -91,7 +91,7 @@ async def query_docs(cape: CapeBase, SecureDocument: Type[SQLModel], subject: st
         subject: User ID for security context
         context: Additional security context
     """
-    async with cape.get_session(AuthContext(subject=subject, context=context)) as session:
+    async with cape.get_session(AuthContext(id=subject, context=context)) as session:
         result = await session.execute(select(SecureDocument))
         return result.scalars().all()
 
@@ -119,7 +119,7 @@ async def test_unauthorized_access(cape):
 
 @pytest.mark.asyncio
 async def test_write_own_documents(cape):
-    async with cape.get_session(AuthContext(subject="alice", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="alice", context={"org_id": "org1"})) as session:
         doc = await session.get(SecureDocument, 1)  # Doc owned by alice
         doc.content = "Updated content"
         session.add(doc)
@@ -130,7 +130,7 @@ async def test_write_own_documents(cape):
 
 @pytest.mark.asyncio
 async def test_create_multiple_documents(cape):
-    async with cape.get_session(AuthContext(subject="alice", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="alice", context={"org_id": "org1"})) as session:
         # Create multiple documents in the same session
         doc1 = SecureDocument(
             title="Document 1",
@@ -158,7 +158,7 @@ async def test_create_multiple_documents(cape):
 @pytest.mark.asyncio
 async def test_insert_statement(cape):
     """Test that users can insert documents using SQLAlchemy insert statement"""
-    async with cape.get_session(AuthContext(subject="alice", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="alice", context={"org_id": "org1"})) as session:
         # Create new document using insert statement
         stmt = insert(SecureDocument).values(
             title="New Doc",
@@ -182,7 +182,7 @@ async def test_insert_statement(cape):
 @pytest.mark.asyncio
 async def test_insert_statement_system_managed_fields(cape):
     """Test that users cannot insert documents with incorrect permissions using insert statement"""
-    async with cape.get_session(AuthContext(subject="alice", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="alice", context={"org_id": "org1"})) as session:
         with pytest.raises(HTTPException):
             # Try to create document owned by bob (should fail)
             stmt = insert(SecureDocument).values(
@@ -197,7 +197,7 @@ async def test_insert_statement_system_managed_fields(cape):
 @pytest.mark.asyncio
 async def test_insert_statement_success(cape):
     """Test that users can insert documents with correct permissions using insert statement"""
-    async with cape.get_session(AuthContext(subject="alice", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="alice", context={"org_id": "org1"})) as session:
         
         stmt = insert(SecureDocument).values(
             title="Auto-populated Doc",
@@ -220,11 +220,11 @@ async def test_insert_statement_success(cape):
 
 @pytest.mark.asyncio
 async def test_write_unauthorized_document(cape):
-    async with cape.get_session(AuthContext(subject="bob", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="bob", context={"org_id": "org1"})) as session:
         doc = await session.get(SecureDocument, 3)  # Doc owned by bob
 
     with pytest.raises(PermissionDeniedError):
-        async with cape.get_session(AuthContext(subject="alice", context={"org_id": "org1"})) as session:
+        async with cape.get_session(AuthContext(id="alice", context={"org_id": "org1"})) as session:
             doc.content = "Updated content"
             session.add(doc)
             await session.commit()
@@ -233,12 +233,12 @@ async def test_write_unauthorized_document(cape):
 async def test_write_authorized_document(cape):
     """Test that updates are allowed when user has proper authorization"""
     # First get the document as bob
-    async with cape.get_session(AuthContext(subject="bob", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="bob", context={"org_id": "org1"})) as session:
         doc = await session.get(SecureDocument, 3)  # Doc owned by bob
         original_content = doc.content
 
     # Update as bob (should succeed)
-    async with cape.get_session(AuthContext(subject="bob", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="bob", context={"org_id": "org1"})) as session:
         doc.content = "Updated by owner"
         session.add(doc)
         await session.commit()
@@ -251,7 +251,7 @@ async def test_write_authorized_document(cape):
 
 @pytest.mark.asyncio
 async def test_change_owner_field_permission_denied(cape):
-    async with cape.get_session(AuthContext(subject="alice", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="alice", context={"org_id": "org1"})) as session:
         doc = await session.get(SecureDocument, 1)  # Doc owned by alice
         doc.content = "Updated content"
         session.add(doc)
@@ -266,7 +266,7 @@ async def test_change_owner_field_permission_denied(cape):
 
 @pytest.mark.asyncio
 async def test_bulk_update_own_documents(cape, sample_docs):
-    async with cape.get_session(AuthContext(subject="alice", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="alice", context={"org_id": "org1"})) as session:
         stmt = (
             update(SecureDocument)
             .where(SecureDocument.owner_id == "alice")
@@ -288,7 +288,7 @@ async def test_bulk_update_own_documents(cape, sample_docs):
 # Add test for bulk update with permission denied error
 @pytest.mark.asyncio
 async def test_bulk_update_permission_denied(cape):
-    async with cape.get_session(AuthContext(subject="bob")) as session:
+    async with cape.get_session(AuthContext(id="bob")) as session:
         stmt = (
             update(SecureDocument)
             .where(SecureDocument.owner_id == "alice")
@@ -330,7 +330,7 @@ async def test_context_isolation(cape):
 @pytest.mark.asyncio
 async def test_bulk_delete_own_documents(cape):
     """Test that users can bulk delete their own documents using delete statement"""
-    async with cape.get_session(AuthContext(subject="alice")) as session:
+    async with cape.get_session(AuthContext(id="alice")) as session:
         # Delete all documents owned by alice
         stmt = delete(SecureDocument).where(SecureDocument.owner_id == "alice")
         await session.execute(stmt)
@@ -343,7 +343,7 @@ async def test_bulk_delete_own_documents(cape):
         alice_docs = results.scalars().all()
         assert len(alice_docs) == 0
         
-    async with cape.get_session(AuthContext(subject="bob")) as session:
+    async with cape.get_session(AuthContext(id="bob")) as session:
         # Verify bob's documents still exist
         results = await session.execute(
             select(SecureDocument).where(SecureDocument.owner_id == "bob")
@@ -354,7 +354,7 @@ async def test_bulk_delete_own_documents(cape):
 @pytest.mark.asyncio
 async def test_unauthorized_bulk_delete(cape):
     """Test that users cannot bulk delete documents they don't own"""
-    async with cape.get_session(AuthContext(subject="bob")) as session:
+    async with cape.get_session(AuthContext(id="bob")) as session:
         # Attempt to delete alice's documents
         stmt = delete(SecureDocument).where(SecureDocument.owner_id == "alice").returning(SecureDocument.id)
         result = await session.execute(stmt)
@@ -362,7 +362,7 @@ async def test_unauthorized_bulk_delete(cape):
         assert deleted_count == 0
         await session.commit()
 
-    async with cape.get_session(AuthContext(subject="alice")) as session:
+    async with cape.get_session(AuthContext(id="alice")) as session:
         # Verify alice's documents were not deleted
         results = await session.execute(
             select(SecureDocument).where(SecureDocument.owner_id == "alice")
@@ -378,7 +378,7 @@ async def test_unauthorized_bulk_delete(cape):
 @pytest.mark.asyncio
 async def test_bulk_insert_with_statement(cape):
     """Test bulk insert using insert statement"""
-    async with cape.get_session(AuthContext(subject="alice", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="alice", context={"org_id": "org1"})) as session:
         # Create multiple documents using insert statement
         stmt = insert(SecureDocument).values([
             {
@@ -407,7 +407,7 @@ async def test_bulk_insert_with_statement(cape):
 @pytest.mark.asyncio
 async def test_bulk_insert_system_managed_fields_permission_denied(cape):
     """Test bulk insert fails when trying to set unauthorized ownership"""
-    async with cape.get_session(AuthContext(subject="alice", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="alice", context={"org_id": "org1"})) as session:
         with pytest.raises(PermissionDeniedError):
             stmt = insert(SecureDocument).values([
                 {
@@ -424,7 +424,7 @@ async def test_bulk_insert_system_managed_fields_permission_denied(cape):
 @pytest.mark.asyncio
 async def test_bulk_insert_system_managed_fields(cape):
     """Test that system-managed fields are properly handled in bulk inserts"""
-    async with cape.get_session(AuthContext(subject="alice", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="alice", context={"org_id": "org1"})) as session:
         # Create multiple documents with system-managed fields
         stmt = insert(SecureDocument).values([
             {
@@ -459,7 +459,7 @@ async def test_bulk_insert_system_managed_fields(cape):
 @pytest.mark.asyncio
 async def test_complex_update_query(cape):
     """Test complex update query with multiple conditions"""
-    async with cape.get_session(AuthContext(subject="alice", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="alice", context={"org_id": "org1"})) as session:
         # Update documents that match multiple conditions
         stmt = (
             update(SecureDocument)
@@ -488,7 +488,7 @@ async def test_complex_update_query(cape):
 async def test_join_query_permissions(cape):
     """Test that permissions are properly enforced in join queries"""
     
-    async with cape.get_session(AuthContext(subject="alice", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="alice", context={"org_id": "org1"})) as session:
         # Create some related documents
         doc = await session.execute(
             select(SecureDocument).where(SecureDocument.owner_id == "alice").limit(1)
@@ -514,7 +514,7 @@ async def test_join_query_permissions(cape):
 @pytest.mark.asyncio
 async def test_filter_query_basic(cape):
     """Test basic filter query functionality"""
-    async with cape.get_session(AuthContext(subject="alice", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="alice", context={"org_id": "org1"})) as session:
         # Filter for documents with specific title
         results = await session.execute(
             select(SecureDocument)
@@ -529,7 +529,7 @@ async def test_filter_query_basic(cape):
 @pytest.mark.asyncio
 async def test_filter_query_multiple_conditions(cape):
     """Test filter query with multiple conditions"""
-    async with cape.get_session(AuthContext(subject="alice", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="alice", context={"org_id": "org1"})) as session:
         results = await session.execute(
             select(SecureDocument)
             .where(
@@ -546,7 +546,7 @@ async def test_filter_query_multiple_conditions(cape):
 @pytest.mark.asyncio
 async def test_filter_query_or_conditions(cape):
     """Test filter query with OR conditions"""
-    async with cape.get_session(AuthContext(subject="alice")) as session:
+    async with cape.get_session(AuthContext(id="alice")) as session:
         from sqlalchemy import or_
         
         results = await session.execute(
@@ -568,7 +568,7 @@ async def test_filter_query_or_conditions(cape):
 @pytest.mark.asyncio
 async def test_filter_query_with_order(cape):
     """Test filter query with ordering"""
-    async with cape.get_session(AuthContext(subject="alice", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="alice", context={"org_id": "org1"})) as session:
         results = await session.execute(
             select(SecureDocument)
             .where(SecureDocument.org_id == "org1")
@@ -583,7 +583,7 @@ async def test_filter_query_with_order(cape):
 async def test_filter_query_context_list_conditions(cape):
     """Test filter_query method with list/tuple context values"""
     # Create additional test documents with different org_ids
-    async with cape.get_session(AuthContext(subject="admin")) as session:
+    async with cape.get_session(AuthContext(id="admin")) as session:
         docs = [
             SecureDocument(
                 title=f"MultiOrg Doc {i}",
@@ -598,7 +598,7 @@ async def test_filter_query_context_list_conditions(cape):
     # Test with list in context
     async with cape.get_session(
         AuthContext(
-            subject="bob",
+            id="bob",
             context={"org_id": ["org1", "org2"]}  # Should only see docs from org1 and org2
         )
     ) as session:
@@ -615,7 +615,7 @@ async def test_filter_query_context_list_conditions(cape):
     # Test with tuple in context
     async with cape.get_session(
         AuthContext(
-            subject="bob",
+            id="bob",
             context={"org_id": ("org2", "org3")}  # Should only see docs from org2 and org3
         )
     ) as session:
@@ -632,7 +632,7 @@ async def test_filter_query_context_list_conditions(cape):
     # Test empty list in context
     async with cape.get_session(
         AuthContext(
-            subject="bob",
+            id="bob",
             context={"org_id": []}  # Empty list should return no results
         )
     ) as session:
@@ -647,7 +647,7 @@ async def test_filter_query_context_list_conditions(cape):
 @pytest.mark.asyncio
 async def test_update_system_managed_fields_blocked(cape):
     """Test that system-managed fields cannot be updated directly"""
-    async with cape.get_session(AuthContext(subject="alice", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="alice", context={"org_id": "org1"})) as session:
         # First create a document
         doc = SecureDocument(
             title="Test Doc",
@@ -701,7 +701,7 @@ async def test_update_system_managed_fields_blocked(cape):
 async def test_bulk_update_permission_checks(cape):
     """Test that bulk updates properly check permissions for all affected objects"""
     # First create test documents with different owners
-    async with cape.get_session(AuthContext(subject="alice", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="alice", context={"org_id": "org1"})) as session:
         docs_alice = [
             SecureDocument(title=f"Alice Doc {i}", content="test", org_id="org1")
             for i in range(2)
@@ -709,7 +709,7 @@ async def test_bulk_update_permission_checks(cape):
         session.add_all(docs_alice)
         await session.commit()
 
-    async with cape.get_session(AuthContext(subject="bob", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="bob", context={"org_id": "org1"})) as session:
         docs_bob = [
             SecureDocument(title=f"Bob Doc {i}", content="test", org_id="org1")
             for i in range(2)
@@ -718,7 +718,7 @@ async def test_bulk_update_permission_checks(cape):
         await session.commit()
 
     # Test 1: Update only owned documents (should succeed)
-    async with cape.get_session(AuthContext(subject="alice", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="alice", context={"org_id": "org1"})) as session:
         stmt = (
             update(SecureDocument)
             .where(SecureDocument.title.like("Alice Doc%"))
@@ -736,7 +736,7 @@ async def test_bulk_update_permission_checks(cape):
         assert all(doc.content == "Updated by owner" for doc in docs)
 
     # Test 2: Attempt to update mix of owned and unowned documents (should fail)
-    async with cape.get_session(AuthContext(subject="alice", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="alice", context={"org_id": "org1"})) as session:
         stmt = (
             update(SecureDocument)
             .where(SecureDocument.org_id == "org1")  # Matches both Alice's and Bob's docs
@@ -761,18 +761,18 @@ async def test_bulk_update_permission_checks(cape):
 async def test_privileged_session_bypass_rls(cape):
     """Test that privileged session bypasses RLS checks"""
     # First create test documents with different owners
-    async with cape.get_session(AuthContext(subject="dave")) as session:
+    async with cape.get_session(AuthContext(id="dave")) as session:
         doc_alice = SecureDocument(title="Dave Doc", content="test", org_id="org1")
         session.add(doc_alice)
         await session.commit()
 
-    async with cape.get_session(AuthContext(subject="elaine")) as session:
+    async with cape.get_session(AuthContext(id="elaine")) as session:
         doc_bob = SecureDocument(title="Elaine Doc", content="test", org_id="org2")
         session.add(doc_bob)
         await session.commit()
 
     # Test regular session (should only see owned documents)
-    async with cape.get_session(AuthContext(subject="dave")) as session:
+    async with cape.get_session(AuthContext(id="dave")) as session:
         results = await session.execute(select(SecureDocument))
         docs = results.scalars().all()
         assert len(docs) == 1  # Should only see Alice's doc
@@ -791,7 +791,7 @@ async def test_privileged_session_bypass_rls(cape):
 async def test_privileged_session_write_operations(cape):
     """Test that privileged session can perform write operations on any document"""
     # Create test documents
-    async with cape.get_session(AuthContext(subject="alice")) as session:
+    async with cape.get_session(AuthContext(id="alice")) as session:
         doc = SecureDocument(title="Test Doc", content="Original", org_id="org1")
         session.add(doc)
         await session.commit()
@@ -864,7 +864,7 @@ async def test_privileged_session_context_isolation(cape):
         await session.commit()
 
     # Verify regular session still has RLS enforced
-    async with cape.get_session(AuthContext(subject="alice")) as session:
+    async with cape.get_session(AuthContext(id="alice")) as session:
         results = await session.execute(
             select(SecureDocument)
             .where(SecureDocument.title == "System Doc")
@@ -882,14 +882,14 @@ async def test_privileged_session_context_isolation(cape):
 async def test_raw_sql_statements(cape):
     """Test that raw SQL statements raise NotImplementedError"""
     # First create some test data using ORM
-    async with cape.get_session(AuthContext(subject="david", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="david", context={"org_id": "org1"})) as session:
         doc = SecureDocument(title="SQL Test Doc", content="Original", org_id="org1")
         session.add(doc)
         await session.commit()
         doc_id = doc.id
 
     # Test raw SQL select raises error
-    async with cape.get_session(AuthContext(subject="david")) as session:
+    async with cape.get_session(AuthContext(id="david")) as session:
         with pytest.raises(NotImplementedError):
             await session.execute(
                 text("SELECT * FROM securedocument WHERE title = :title"),
@@ -910,7 +910,7 @@ async def test_raw_sql_joins(cape):
     import pytest
 
     # Create test data using ORM
-    async with cape.get_session(AuthContext(subject="alice", context={"org_id": "org1"})) as session:
+    async with cape.get_session(AuthContext(id="alice", context={"org_id": "org1"})) as session:
         doc = SecureDocument(title="Join Test Doc", content="test", org_id="org1")
         session.add(doc)
         await session.commit()
@@ -920,7 +920,7 @@ async def test_raw_sql_joins(cape):
         await session.commit()
 
     # Test join with raw SQL raises error
-    async with cape.get_session(AuthContext(subject="alice")) as session:
+    async with cape.get_session(AuthContext(id="alice")) as session:
         with pytest.raises(NotImplementedError):
             await session.execute(text("""
                 SELECT s.title, r.note 

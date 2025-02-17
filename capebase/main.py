@@ -13,6 +13,7 @@ from typing import (
     Optional,
     Tuple,
     Type,
+    Union,
 )
 
 from fastapi import Depends, FastAPI, Request
@@ -328,7 +329,7 @@ class CapeBase:
                 schema=config.model,
                 create_schema=config.create_schema,
                 update_schema=config.update_schema,
-                get_session=self.get_db_dependency_factory(self.auth_provider),
+                get_session=self.get_db_dependency(),
                 notification_engine=self.notification_engine,
                 row_level_security=self.row_level_security,
                 routes=config.routes,
@@ -356,7 +357,7 @@ class CapeBase:
         actions: List[str],
         owner_field: Optional[str] = None,
         context_fields: List[str] = [],
-    ):
+    ) -> Union[Type[SQLModel], Callable[[Type[SQLModel]], Type[SQLModel]]]:
         """
         Decorator to set up row-level security for SQLModel classes.
         """
@@ -380,21 +381,27 @@ class CapeBase:
 
     def publish(
         self,
-        cls: Type[SQLModel],
+        cls: Optional[Type[SQLModel]] = None,
+        *,
         routes: Optional[List[str]] = None,
         create_schema: Optional[Type[SQLModel]] = None,
         update_schema: Optional[Type[SQLModel]] = None,
-    ) -> Type[SQLModel]:
-        if not issubclass(cls, SQLModel):
-            raise TypeError(
-                f"@publish can only be applied to SQLModel classes, not {type(cls).__name__}."
+    ) -> Union[Type[SQLModel], Callable[[Type[SQLModel]], Type[SQLModel]]]:
+        def decorator(cls: Type[SQLModel]) -> Type[SQLModel]:
+            if not issubclass(cls, SQLModel):
+                raise TypeError(
+                    f"@publish can only be applied to SQLModel classes, not {type(cls).__name__}."
+                )
+
+            self.model_registry[cls.__name__] = PublishConfig(
+                model=cls, routes=routes, create_schema=create_schema, update_schema=update_schema
             )
+            return cls
 
-        self.model_registry[cls.__name__] = PublishConfig(
-            model=cls, routes=routes, create_schema=create_schema, update_schema=update_schema
-        )
+        if cls is not None:
+            return decorator(cls)
 
-        return cls
+        return decorator
 
     @asynccontextmanager
     async def get_session(
@@ -423,6 +430,10 @@ class CapeBase:
                 yield session
 
         return get_db_dependency
+
+    def get_db_dependency(self) -> Callable:
+        return self.get_db_dependency_factory(self.auth_provider)
+    
 
     def subscribe(self, model: Type[SQLModel]):
         """Decorator to subscribe to model changes."""

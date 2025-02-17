@@ -87,13 +87,13 @@ def extract_tables(selectable):
     return tables
 
 
-def get_from_subject_key(model: Type[SQLModel]) -> Optional[str]:
-    """Get the from_subject_key from the type hints"""
+def get_from_auth_id_key(model: Type[SQLModel]) -> Optional[str]:
+    """Get the FROM_AUTH_ID key from the type hints"""
     type_hints = get_type_hints(model, include_extras=True)
     for field_name, field_type in type_hints.items():
         if get_origin(field_type) is Annotated:
             for arg in get_args(field_type)[1:]:
-                if isinstance(arg, AuthField) and arg.source == "subject":
+                if isinstance(arg, AuthField) and arg.source == "id":
                     return field_name
 
     return None
@@ -172,8 +172,8 @@ class RowLevelSecurity:
 
         # Add subject context for fields that require it
         for field_name, auth_field in config.get_system_managed_fields:
-            if auth_field.source == "subject" and field_name not in subject_context:
-                subject_context[field_name] = auth_context.subject
+            if auth_field.source == "id" and field_name not in subject_context:
+                subject_context[field_name] = auth_context.id
 
         # TODO: Handle wildcard / default role properly
         return self.access_control.enforce(
@@ -405,7 +405,7 @@ class RowLevelSecurity:
             matching_configs = [
                 cfg
                 for cfg in configs
-                if cfg.action == action and cfg.role in (auth_context.subject, WILDCARD)
+                if cfg.action == action and cfg.role in (auth_context.role, WILDCARD)
             ]
 
             # TODO: Revisit this to deterine if we should raise an error or return an empty query.
@@ -439,7 +439,7 @@ class RowLevelSecurity:
                 # Build an ownership filter.
                 if config.owner_field:
                     cfg_filters.append(
-                        getattr(model_class, config.owner_field) == auth_context.subject
+                        getattr(model_class, config.owner_field) == auth_context.id
                     )
 
                 if cfg_filters:

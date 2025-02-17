@@ -87,7 +87,7 @@ def test_filter_query_owner_access(session, rls, sample_data):
     """Test that users can access their own documents"""
     query = select(SecureDocument)
     filtered_query = rls.filter_query(
-        query=query, action="read", auth_context=AuthContext(subject="bob", context={})
+        query=query, action="read", auth_context=AuthContext(id="bob", context={})
     )
 
     results = session.exec(filtered_query).all()
@@ -99,7 +99,7 @@ def test_filter_query_org_access(session, rls, sample_data):
     """Test that users can access documents in their org"""
     query = select(SecureDocument)
     filtered_query = rls.filter_query(
-        query=query, action="read", auth_context=AuthContext(subject="alice", context={"org_id": "org1"})
+        query=query, action="read", auth_context=AuthContext(id="alice", context={"org_id": "org1"})
     )
 
     results = session.exec(filtered_query).all()
@@ -113,7 +113,7 @@ def test_filter_query_no_access(session, rls, sample_data):
     filtered_query = rls.filter_query(
         query=query,
         action="read",
-        auth_context=AuthContext(subject="dave", context={"org_id": "org3"})
+        auth_context=AuthContext(id="dave", context={"org_id": "org3"})
     )
 
     results = session.exec(filtered_query).all()
@@ -126,7 +126,7 @@ def test_filter_query_combined_access(session, rls, sample_data):
     filtered_query = rls.filter_query(
         query=query,
         action="read",
-        auth_context=AuthContext(subject="bob", context={"org_id": "org2"})
+        auth_context=AuthContext(id="bob", context={"org_id": "org2"})
     )
 
     results = session.exec(filtered_query).all()
@@ -144,7 +144,7 @@ def test_filter_query_update(session, rls, sample_data):
     filtered_query = rls.filter_query(
         query=query,
         action="write",
-        auth_context=AuthContext(subject="bob", context={"org_id": "org1"})
+        auth_context=AuthContext(id="bob", context={"org_id": "org1"})
     )
 
     session.execute(filtered_query)
@@ -175,7 +175,7 @@ def test_filter_query_delete(session, rls, sample_data):
     filtered_query = rls.filter_query(
         query=query,
         action="delete",
-        auth_context=AuthContext(subject="bob", context={"org_id": "org1"})
+        auth_context=AuthContext(id="bob", context={"org_id": "org1"})
     )
 
     session.execute(filtered_query)
@@ -208,7 +208,7 @@ def test_filter_query_complex_update(session, rls, sample_data):
     filtered_query = rls.filter_query(
         query=stmt,
         action="write",
-        auth_context=AuthContext(subject="alice", context={"org_id": "org1"})
+        auth_context=AuthContext(id="alice", context={"org_id": "org1"})
     )
 
     # Execute the filtered update

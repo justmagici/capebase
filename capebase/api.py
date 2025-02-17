@@ -133,7 +133,7 @@ class APIGenerator(Generic[T], APIRouter):
     def _setup_update_route(self) -> None:
         self.add_api_route(
             "/{item_id}",
-            methods=["PUT"],
+            methods=["PATCH"],
             endpoint=self._update(),
             response_model=self.schema,
             summary=f"Update {self.schema.__name__}",

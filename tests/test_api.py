@@ -186,7 +186,7 @@ async def test_update_item(client, api_generator):
         name="Updated Name",
         status="active",  # Only updating name and status
     )
-    response = client.put(
+    response = client.patch(
         f"/testitem/{item_id}", json=update_data.model_dump(exclude_unset=True)
     )
     assert response.status_code == 200
@@ -202,7 +202,7 @@ async def test_update_item(client, api_generator):
 @pytest.mark.asyncio
 async def test_update_nonexistent_item(client, api_generator):
     payload = TestItem(name="Updated Name", description="Updated Description")
-    response = client.put("/testitem/999", json=payload.model_dump())
+    response = client.patch("/testitem/999", json=payload.model_dump())
     assert response.status_code == 404
 
 
@@ -241,7 +241,7 @@ async def test_partial_update(client, api_generator):
 
     # Update only the status
     update_data = TestItemUpdate(status="inactive")
-    response = client.put(
+    response = client.patch(
         f"/testitem/{item_id}", json=update_data.model_dump(exclude_unset=True)
     )
     assert response.status_code == 200
@@ -283,7 +283,7 @@ class TestSubscribeRoute:
 
         async def get_session():
             class MockSession:
-                info = {"auth_context":  AuthContext(subject="test_user", context={"org": "org1"})}
+                info = {"auth_context":  AuthContext(id="test_user", context={"org": "org1"})}
 
             return MockSession()
 
@@ -342,7 +342,7 @@ class TestSubscribeRoute:
 
         async def get_session():
             class MockSession:
-                info = {"auth_context": AuthContext(subject="test_user", context={"org": "org1"})}
+                info = {"auth_context": AuthContext(id="test_user", context={"org": "org1"})}
 
             return MockSession()
 
@@ -434,7 +434,7 @@ class TestSubscribeRoute:
             # Test update with custom schema
             item_id = created["id"]
             update_data = {"status": "active"}  # Using CustomUpdate field
-            response = await client.put(f"/testitem/{item_id}", json=update_data)
+            response = await client.patch(f"/testitem/{item_id}", json=update_data)
             assert response.status_code == 200
             updated = response.json()
             assert updated["status"] == "active"
