@@ -18,12 +18,11 @@ from typing import (
 )
 
 from fastapi import Depends, FastAPI, Request
-from sqlalchemy import Insert, event, Update, Delete
+from sqlalchemy import Insert, event
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import ORMExecuteState, Session
 from sqlalchemy.sql.elements import TextClause
 from sqlmodel import SQLModel
-from sqlalchemy.engine import Engine
 
 from capebase.api import APIGenerator
 from capebase.auth.access_control import AccessControl
@@ -427,7 +426,7 @@ class CapeBase:
                 routes=routes,
                 create_schema=create_schema,
                 update_schema=update_schema,
-                enable_realtime_notifications = enable_realtime_notifications,
+                enable_realtime_notifications=enable_realtime_notifications,
             )
             return cls
 

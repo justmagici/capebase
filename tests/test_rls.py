@@ -54,7 +54,7 @@ def sample_docs(cape):
 
 @pytest_asyncio.fixture(autouse=True)
 async def setup_test_permission(cape):
-    cape.permission_required(SecureDocument, role='admin', actions=["*"])
+    cape.permission_required(SecureDocument, role='admin', actions=["create", "read", "update", "delete"])
     cape.permission_required(SecureDocument, role="*", actions=["create"])
     cape.permission_required(SecureDocument, role="*", actions=["read"], context_fields=["org_id"])
     cape.permission_required(SecureDocument, role="*", actions=["read", "create", "update", "delete"], owner_field="owner_id")
@@ -78,7 +78,7 @@ async def create_test_docs(cape: CapeBase, setup_test_permission):
         session.add(s4)
         await session.commit()
 
-async def query_docs(cape: CapeBase, SecureDocument: Type[SQLModel], subject: str, context: dict = {}) -> Sequence[SQLModel]:
+async def query_docs(cape: CapeBase, SecureDocument: Type[SQLModel], subject: str, context: dict = {}, role: str = "*") -> Sequence[SQLModel]:
     """Query documents with security context.
     
     Args:
@@ -87,7 +87,7 @@ async def query_docs(cape: CapeBase, SecureDocument: Type[SQLModel], subject: st
         subject: User ID for security context
         context: Additional security context
     """
-    async with cape.get_session(AuthContext(id=subject, context=context)) as session:
+    async with cape.get_session(AuthContext(id=subject, context=context, role=role)) as session:
         result = await session.execute(select(SecureDocument))
         return result.scalars().all()
 
@@ -99,6 +99,15 @@ async def test_read_own_documents(cape):
     assert len(results) == 2  # Should only see owned docs
     titles = {doc.title for doc in results}
     assert titles == {"Doc 1", "Doc 3"}
+
+@pytest.mark.asyncio
+async def test_admin_read_all_documents(cape):
+    """Test that admin users can read all documents regardless of ownership"""
+    results = await query_docs(cape, SecureDocument, "alice", role="admin")
+    
+    assert len(results) == 4  # Should see all docs
+    titles = {doc.title for doc in results}
+    assert titles == {"Doc 1", "Doc 2", "Doc 3", "Doc 4"}  # All docs from all users
 
 @pytest.mark.asyncio
 async def test_read_with_org_context(cape):

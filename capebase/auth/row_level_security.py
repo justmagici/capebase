@@ -423,21 +423,25 @@ class RowLevelSecurity:
             for config in matching_configs:
                 cfg_filters = []
                 # Build context-based filters.
-                if auth_context.context and config.context_fields:
+                if config.context_fields:
                     context_conditions = []
                     for field in config.context_fields:
-                        if field in auth_context.context and hasattr(
+                        if field not in auth_context.context or not hasattr(
                             model_class, field
                         ):
-                            value = auth_context.context[field]
-                            if isinstance(value, (list, tuple)):
-                                context_conditions.append(
-                                    getattr(model_class, field).in_(value)
-                                )
-                            else:
-                                context_conditions.append(
-                                    getattr(model_class, field) == value
-                                )
+                            context_conditions.append(False)
+                            continue
+
+                        value = auth_context.context[field]
+                        if isinstance(value, (list, tuple)):
+                            context_conditions.append(
+                                getattr(model_class, field).in_(value)
+                            )
+                        else:
+                            context_conditions.append(
+                                getattr(model_class, field) == value
+                            )
+
                     if context_conditions:
                         cfg_filters.append(or_(*context_conditions))
 
@@ -446,6 +450,9 @@ class RowLevelSecurity:
                     cfg_filters.append(
                         getattr(model_class, config.owner_field) == auth_context.id
                     )
+
+                if config.role:
+                    cfg_filters.append(config.role in (auth_context.role, WILDCARD))
 
                 if cfg_filters:
                     table_filters.append(and_(*cfg_filters))
