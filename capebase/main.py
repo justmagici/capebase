@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from functools import partial
 from typing import (
+    Any,
     AsyncGenerator,
     Callable,
     List,
@@ -17,11 +18,12 @@ from typing import (
 )
 
 from fastapi import Depends, FastAPI, Request
-from sqlalchemy import Insert, event
+from sqlalchemy import Insert, event, Update, Delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import ORMExecuteState, Session
 from sqlalchemy.sql.elements import TextClause
 from sqlmodel import SQLModel
+from sqlalchemy.engine import Engine
 
 from capebase.api import APIGenerator
 from capebase.auth.access_control import AccessControl
@@ -56,6 +58,7 @@ class PublishConfig:
     routes: Optional[List[str]] = None
     create_schema: Optional[Type[SQLModel]] = None
     update_schema: Optional[Type[SQLModel]] = None
+    enable_realtime_notifications: bool = True
 
 
 @dataclass
@@ -63,6 +66,7 @@ class CapeBase:
     app: FastAPI
     db_path: str
     auth_provider: AuthContextProvider
+    timeout: float = DEFAULT_TIMEOUT
 
     routers: dict[str, APIGenerator] = field(default_factory=defaultdict)
     notification_engine: NotificationEngine = field(default_factory=NotificationEngine)
@@ -72,6 +76,9 @@ class CapeBase:
     row_level_security: RowLevelSecurity = field(init=False)
 
     _tasks: List[asyncio.Task] = field(default_factory=list)
+    _event_listeners: List[Tuple[Type[Session], str, Callable[..., Any]]] = field(
+        default_factory=list
+    )
     _pending_subscriptions: List[
         Tuple[Type[SQLModel], List[Callable[[ModelChange], None]]]
     ] = field(default_factory=list)
@@ -81,6 +88,20 @@ class CapeBase:
         self.row_level_security = RowLevelSecurity(AccessControl())
 
         self._setup_lifespan()
+
+    def _register_event_listener(self, target, identifier, fn):
+        """Track event listener for cleanup"""
+        self._event_listeners.append((target, identifier, fn))
+        event.listen(target, identifier, fn)
+
+    def _remove_all_event_listeners(self):
+        """Remove all event listeners"""
+        for target, identifier, fn in self._event_listeners:
+            try:
+                event.remove(target, identifier, fn)
+            except Exception as e:
+                logger.debug(f"Error removing event listener: {e}")
+        self._event_listeners = []
 
     def _setup_lifespan(self):
         from contextlib import AsyncExitStack
@@ -113,7 +134,7 @@ class CapeBase:
                     try:
                         # Wait for all tasks with timeout
                         await asyncio.wait_for(
-                            asyncio.gather(*self._tasks), timeout=DEFAULT_TIMEOUT
+                            asyncio.gather(*self._tasks), timeout=self.timeout
                         )
                     except asyncio.TimeoutError:
                         logger.debug("Canelling long running tasks during shutdown")
@@ -129,6 +150,10 @@ class CapeBase:
                             except (asyncio.CancelledError, Exception) as e:
                                 logger.debug(f"Task cleanup: {e}")
                         self._tasks = []
+
+                # Remove all Session listeners:
+                self._remove_all_event_listeners()
+
                 logger.info("Cape shutdown complete")
 
         # Attach lifespan context to app
@@ -145,7 +170,6 @@ class CapeBase:
         # Create a local reference to row_level_security to use in closure
         rls = self.row_level_security
 
-        @event.listens_for(Session, "do_orm_execute")
         def _do_orm_execute(orm_execute_state: ORMExecuteState):
             """Listen for query execution and apply RLS filtering"""
             is_privileged = orm_execute_state.session.info.get("is_privileged", False)
@@ -158,7 +182,9 @@ class CapeBase:
 
             if isinstance(orm_execute_state.statement, TextClause):
                 # TODO: Instead of throwing error here, consider allowing direct SQL Statement without auth check through configuration
-                raise NotImplementedError("TextClause queries are not supported for row-level security filtering")
+                raise NotImplementedError(
+                    "TextClause queries are not supported for row-level security filtering"
+                )
 
             if orm_execute_state.is_insert and isinstance(
                 orm_execute_state.statement, Insert
@@ -207,7 +233,6 @@ class CapeBase:
                 orm_execute_state.statement, action, auth_context
             )
 
-        @event.listens_for(Session, "before_flush")
         def _before_flush(session, flush_context, instances):
             """Check permissions before any changes are committed to the database"""
             is_privileged = session.info.get("is_privileged", False)
@@ -273,19 +298,22 @@ class CapeBase:
                             "User does not have permission to delete this object"
                         )
 
+        self._register_event_listener(Session, "do_orm_execute", _do_orm_execute)
+        self._register_event_listener(Session, "before_flush", _before_flush)
+
     def _setup_publish_handlers(self):
         for config in self.model_registry.values():
-            event.listen(
+            self._register_event_listener(
                 config.model,
                 "after_insert",
                 partial(self._notify_change, event_type="INSERT"),
             )
-            event.listen(
+            self._register_event_listener(
                 config.model,
                 "after_update",
                 partial(self._notify_change, event_type="UPDATE"),
             )
-            event.listen(
+            self._register_event_listener(
                 config.model,
                 "after_delete",
                 partial(self._notify_change, event_type="DELETE"),
@@ -386,6 +414,7 @@ class CapeBase:
         routes: Optional[List[str]] = None,
         create_schema: Optional[Type[SQLModel]] = None,
         update_schema: Optional[Type[SQLModel]] = None,
+        enable_realtime_notifications: bool = True,
     ) -> Union[Type[SQLModel], Callable[[Type[SQLModel]], Type[SQLModel]]]:
         def decorator(cls: Type[SQLModel]) -> Type[SQLModel]:
             if not issubclass(cls, SQLModel):
@@ -394,7 +423,11 @@ class CapeBase:
                 )
 
             self.model_registry[cls.__name__] = PublishConfig(
-                model=cls, routes=routes, create_schema=create_schema, update_schema=update_schema
+                model=cls,
+                routes=routes,
+                create_schema=create_schema,
+                update_schema=update_schema,
+                enable_realtime_notifications = enable_realtime_notifications,
             )
             return cls
 
@@ -433,7 +466,6 @@ class CapeBase:
 
     def get_db_dependency(self) -> Callable:
         return self.get_db_dependency_factory(self.auth_provider)
-    
 
     def subscribe(self, model: Type[SQLModel]):
         """Decorator to subscribe to model changes."""

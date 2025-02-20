@@ -18,14 +18,10 @@ from sqlmodel import SQLModel
 
 from capebase.models import ModelChange, NotificationLog
 from capebase.types import ModelType
- 
+
 logger = logging.getLogger(__name__)
 
 F = Callable[[NotificationLog], None]
-
-
-# API Generator will just setup a subscriber to notifcation engine for each model
-# and then we can just use the notification engine to send notifications to the API
 
 
 # In-memory broadcast channel that can be used to send notification to multiple listeners
@@ -65,13 +61,12 @@ class BroadcastChannel(Generic[ModelType]):
 
 @dataclass
 class NotificationEngine:
-    _channels: Dict[Union[str, Callable[..., str]], BroadcastChannel[SQLModel]] = field(default_factory=dict)
+    _channels: Dict[Union[str, Callable[..., str]], BroadcastChannel[SQLModel]] = field(
+        default_factory=dict
+    )
 
     @overload
-    def get_channel(
-        self, model_type: Type[SQLModel]
-    ) -> BroadcastChannel[SQLModel]: ...
-    
+    def get_channel(self, model_type: Type[SQLModel]) -> BroadcastChannel[SQLModel]: ...
 
     @overload
     def get_channel(self, model_type: str) -> BroadcastChannel[SQLModel]: ...
@@ -98,5 +93,3 @@ class NotificationEngine:
         """Notify all subscribers of a model change"""
         if change.table in self._channels:
             await self._channels[change.table].publish(change)
-
-        

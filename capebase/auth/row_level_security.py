@@ -191,7 +191,12 @@ class RowLevelSecurity:
             List[SQLModel]: A list of model instances built from the statement's values.
         """
         table_name = statement.table.name
-        model_class = self.model_configs[table_name][0].model
+        try:
+            model_class = self.model_configs[table_name][0].model
+        except IndexError:
+            # TODO: Revisit this to determine if we should raise an error or handle it gracefully.
+            raise ValueError(f"No model configuration found for table: {table_name}")
+
         objects = []
 
         # Handle single insert

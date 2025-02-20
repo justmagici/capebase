@@ -12,9 +12,6 @@ from capebase.models import FROM_AUTH_ID
 
 
 class SecureDocument(SQLModel, table=True):
-    # SecureDocument could be called multiple times, so we need to extend the existing table
-    __table_args__ = {'extend_existing': True}
-    
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str
     content: str
@@ -23,7 +20,6 @@ class SecureDocument(SQLModel, table=True):
 
 # Create a related model for testing joins
 class RelatedDoc(SQLModel, table=True):
-    __table_args__ = {'extend_existing': True}
     id: Optional[int] = Field(default=None, primary_key=True)
     doc_id: int = Field(foreign_key="securedocument.id")
     note: str
@@ -369,11 +365,16 @@ async def test_unauthorized_bulk_delete(cape):
         )
         alice_docs = results.scalars().all()
         assert len(alice_docs) == 2
-        stmt = delete(SecureDocument).where(SecureDocument.owner_id == "alice").returning(SecureDocument.id)
+        stmt = delete(SecureDocument).where(SecureDocument.owner_id == "alice")
         result = await session.execute(stmt)
         await session.commit()
-        deleted_count = len(result.scalars().all())
-        assert deleted_count == 2
+
+        # Verify no documents remain for alice
+        results = await session.execute(
+            select(SecureDocument).where(SecureDocument.owner_id == "alice")
+        )
+        remaining_docs = results.scalars().all()
+        assert len(remaining_docs) == 0
 
 @pytest.mark.asyncio
 async def test_bulk_insert_with_statement(cape):
