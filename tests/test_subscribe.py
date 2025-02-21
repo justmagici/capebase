@@ -4,7 +4,7 @@ from unittest.mock import Mock
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
-from sqlalchemy import func, text, insert, update, delete, Insert, Update, Delete
+from sqlalchemy import delete, func, insert, update
 from sqlmodel import Field, SQLModel, select
 
 from capebase.main import AuthContext, CapeBase

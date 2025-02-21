@@ -134,8 +134,8 @@ wheels = [
 ]
 
 [[package]]
-name = "cape"
-version = "0.1.0"
+name = "capebase"
+version = "0.1.0a1"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
@@ -155,6 +155,7 @@ dev = [
     { name = "aiofiles" },
     { name = "async-asgi-testclient" },
     { name = "asyncpg" },
+    { name = "fastapi-users" },
     { name = "fastapi-users-db-sqlalchemy" },
     { name = "httpx" },
     { name = "jinja2" },
@@ -183,6 +184,7 @@ dev = [
     { name = "aiofiles", specifier = ">=24.1.0" },
     { name = "async-asgi-testclient", specifier = ">=1.4.11" },
     { name = "asyncpg", specifier = ">=0.30.0" },
+    { name = "fastapi-users", specifier = ">=14.0.1" },
     { name = "fastapi-users-db-sqlalchemy", specifier = ">=7.0.0" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "jinja2", specifier = ">=3.1.5" },
