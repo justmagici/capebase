@@ -8,11 +8,38 @@ exclude = ["templates"]
 
 [project]
 name = "capebase"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.1.0-alpha.1"
 readme = "README.md"
+description = "A Python library for building real-time backends with auto-generated APIs, real-time updates, and granular permissions."
 license = { file = "LICENSE" }
 requires-python = ">=3.13"
+keywords = [
+    "fastapi",
+    "sqlmodel",
+    "pydantic",
+    "async",
+    "sqlalchemy",
+    "postgresql",
+    "mysql",
+    "sqlite",
+    "real-time",
+    "api-generator",
+    "database",
+    "authentication",
+    "permissions",
+    "websockets",
+    "sse",
+    "crud"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+    "Typing :: Typed",
+]
 dependencies = [
     "aiosqlite>=0.20.0",
     "casbin>=1.37.0",
@@ -25,6 +52,10 @@ dependencies = [
     "sqlmodel>=0.0.22",
     "sse-starlette>=2.2.1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/justmagici/capebase"
+Bug-Tracker = "https://github.com/justmagici/capebase/issues"
 
 [tool.mypy]
 plugins = ['pydantic.mypy']
@@ -44,6 +75,7 @@ dev = [
     "asyncpg>=0.30.0",
     "fastapi-users-db-sqlalchemy>=7.0.0",
     "pytest>=8.3.4",
+    "fastapi-users>=14.0.1",
 ]
 
 [tool.pytest.ini_options]
