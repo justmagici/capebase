@@ -1,18 +1,14 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools.packages.find]
-where = ["."]
-exclude = ["templates"]
+requires = ["hatchling>=1.21.0"]
+build-backend = "hatchling.build"
 
 [project]
 name = "capebase"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.3"
 readme = "README.md"
 description = "A Python library for building real-time backends with auto-generated APIs, real-time updates, and granular permissions."
 license = { file = "LICENSE" }
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 keywords = [
     "fastapi",
     "sqlmodel",
@@ -36,6 +32,9 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",   
+    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries",
     "Typing :: Typed",
@@ -51,6 +50,7 @@ dependencies = [
     "pydantic>=2.10.4",
     "sqlmodel>=0.0.22",
     "sse-starlette>=2.2.1",
+    "hatch>=1.14.0",
 ]
 
 [project.urls]
@@ -76,7 +76,11 @@ dev = [
     "fastapi-users-db-sqlalchemy>=7.0.0",
     "pytest>=8.3.4",
     "fastapi-users>=14.0.1",
+    "ruff>=0.9.7",
 ]
 
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"
+
+[tool.hatch.build.targets.wheel]
+packages = ["capebase"]

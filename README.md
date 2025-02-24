@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="docs/assets/logo.png" alt="CapeBase Logo">
+  <img src="https://raw.githubusercontent.com/justmagici/capebase/50bf0b2128c8a155ac3041f531ba35c29fdd581f/docs/assets/logo.png" alt="CapeBase Logo">
 </p>
 
 <p align="center">
-  Enhance your Python backend with auto-generated APIs, real-time features, and granular permissions
+  Enhance your Python backend with auto-generated APIs, real-time features, and granular permissions—all with minimal effort.
 </p>
 
 ---
@@ -13,7 +13,7 @@
 
 ## Overview
 
-CapeBase is a Python library designed for building real-time backends with single-instance databases, ideal for small to medium projects. It provides auto-generated REST APIs, real-time updates, and built-in data access controls. Database-agnostic by design, it supports SQLite, PostgreSQL, and MySQL, while seamlessly integrating with FastAPI and SQLModel for straightforward development.
+CapeBase is a lightweight yet powerful Python library that transforms your backend development. It provides real-time capabilities, auto-generated REST APIs, and fine-grained data access controls—all with minimal setup. Designed for small to medium projects, CapeBase is database-agnostic, supporting SQLite, PostgreSQL, and MySQL while seamlessly integrating with FastAPI and SQLModel.
 
 ## ✨ Features
 
