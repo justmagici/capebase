@@ -11,6 +11,8 @@
 [![PyPI version](https://badge.fury.io/py/capebase.svg)](https://badge.fury.io/py/capebase)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+> 🚧 **Note**: CapeBase is in early development - expect some API and interface tweaks along the way as we work towards a stable release!
+
 ## Overview
 
 CapeBase is a lightweight yet powerful Python library that transforms your backend development. It provides real-time capabilities, auto-generated REST APIs, and fine-grained data access controls—all with minimal setup. Designed for small to medium projects, CapeBase is database-agnostic, supporting SQLite, PostgreSQL, and MySQL while seamlessly integrating with FastAPI and SQLModel.
@@ -130,6 +132,8 @@ async def on_todo_change(change):
         )
         print(f"User has created {len(result.scalars().all())} todos")
 ```
+
+You can find the complete working code for this todo application in the [examples/](https://github.com/justmagici/capebase/tree/master/examples) directory.
 
 ### Generated API Routes
 
@@ -257,45 +261,3 @@ from starlette_prometheus import PrometheusMiddleware, metrics
 app.add_middleware(PrometheusMiddleware)
 app.add_route("/metrics", metrics)
 ```
-
-This provides HTTP-level metrics including:
-- Request latency
-- Request counts by endpoint
-- Response status codes
-- Active requests
-
-Database monitoring features are currently in development, which will provide insights into:
-- Query performance
-- Connection pool status
-- Database operations
-- Error rates
-
-#### Audit Trail (WIP)
-
-### Important Note on Database Operations
-
-> ⚠️ **Note**: Currently, raw SQL operations have limited functionality. We recommend using ORM-style operations for full feature support.
-
-✅ **Recommended**:
-```python
-@app.patch("/todo/{todo_id}")
-async def update_todo(
-    todo_id: int,
-    session=Depends(cape.get_db_dependency())
-):
-    todo = await session.get(Todo, todo_id)
-    todo.is_complete = True  # Works well with Cape's event handlers
-    await session.commit()
-```
-
-❌ **Not Recommended**:
-```python
-# Use ORM-style operations instead
-await session.execute(
-    update(Todo)
-    .where(Todo.id == todo_id)
-    .values(is_complete=True)
-)
-```
-
-
